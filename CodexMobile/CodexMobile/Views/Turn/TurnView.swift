@@ -46,6 +46,16 @@ struct TurnView: View {
     @State private var isShowingVoiceSetupSheet = false
     @StateObject private var voiceTranscriptionManager = GPTVoiceTranscriptionManager()
 
+    init(thread: CodexThread, isWakingMacDisplayRecovery: Bool) {
+        self.thread = thread
+        self.isWakingMacDisplayRecovery = isWakingMacDisplayRecovery
+        _gitWorkingDirectoryOverride = State(
+            initialValue: UserDefaults.standard.string(
+                forKey: Self.gitWorkingDirectoryOverrideKey(threadID: thread.id)
+            )
+        )
+    }
+
     // ─── ENTRY POINT ─────────────────────────────────────────────
     var body: some View {
         let resolvedThread = currentResolvedThread
@@ -916,6 +926,12 @@ struct TurnView: View {
         codex.thread(for: thread.id) ?? thread
     }
 
+    private static let gitWorkingDirectoryOverrideKeyPrefix = "CodexMobile.gitWorkingDirectoryOverride."
+
+    private static func gitWorkingDirectoryOverrideKey(threadID: String) -> String {
+        gitWorkingDirectoryOverrideKeyPrefix + threadID
+    }
+
     private func effectiveGitWorkingDirectory(for thread: CodexThread) -> String? {
         normalizedGitWorkingDirectory(gitWorkingDirectoryOverride)
             ?? normalizedGitWorkingDirectory(thread.gitWorkingDirectory)
@@ -930,8 +946,16 @@ struct TurnView: View {
     private func selectGitWorkingDirectory(_ path: String) {
         guard let normalizedPath = normalizedGitWorkingDirectory(path) else { return }
         let previousWorkingDirectory = effectiveGitWorkingDirectory(for: currentResolvedThread)
+        let threadWorkingDirectory = normalizedGitWorkingDirectory(currentResolvedThread.gitWorkingDirectory)
+        let overrideKey = Self.gitWorkingDirectoryOverrideKey(threadID: thread.id)
 
-        gitWorkingDirectoryOverride = normalizedPath
+        if normalizedPath == threadWorkingDirectory {
+            gitWorkingDirectoryOverride = nil
+            UserDefaults.standard.removeObject(forKey: overrideKey)
+        } else {
+            gitWorkingDirectoryOverride = normalizedPath
+            UserDefaults.standard.set(normalizedPath, forKey: overrideKey)
+        }
         if normalizedPath != previousWorkingDirectory {
             viewModel.resetGitStateForWorkingDirectoryChange()
         }
