@@ -77,71 +77,76 @@ struct RevenueCatPaywallView: View {
         self.previewIsLoading = previewIsLoading
     }
 
+    @ViewBuilder
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(spacing: 16) {
-                        header
-                        
-                        featureCard
+        if shouldShowLocalTestingUnlockedView {
+            localTestingUnlockedView
+        } else {
+            NavigationStack {
+                VStack(spacing: 0) {
+                    ScrollView(.vertical, showsIndicators: false) {
+                        VStack(spacing: 16) {
+                            header
+
+                            featureCard
+                        }
+                        .padding(.horizontal, 20)
+
+                        .padding(.bottom, 16)
                     }
-                    .padding(.horizontal, 20)
-             
-                    .padding(.bottom, 16)
+
+                    Spacer(minLength: 0)
+
+                    bottomSection
+
                 }
-
-                Spacer(minLength: 0)
-
-                bottomSection
-                    
-            }
-            .opacity(appeared ? 1 : 0)
-            .background(Color(.systemBackground))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                if dismissable, showCloseButton {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button {
-                            dismiss()
-                        } label: {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(.secondary)
+                .opacity(appeared ? 1 : 0)
+                .background(Color(.systemBackground))
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    if dismissable, showCloseButton {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button {
+                                dismiss()
+                            } label: {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     }
                 }
-            }
-            .interactiveDismissDisabled(!dismissable)
-            .offerCodeRedemption(isPresented: $isPresentingOfferCodeRedemption) { result in
-                handleOfferCodeRedemptionCompletion(result)
-            }
-            .task {
-                guard !isPreviewMode else {
-                    seedDefaultSelectionIfNeeded()
-                    return
+                .interactiveDismissDisabled(!dismissable)
+                .offerCodeRedemption(isPresented: $isPresentingOfferCodeRedemption) { result in
+                    handleOfferCodeRedemptionCompletion(result)
                 }
+                .task {
+                    guard !isPreviewMode else {
+                        seedDefaultSelectionIfNeeded()
+                        return
+                    }
 
-                await subscriptions.loadOfferings()
-                seedDefaultSelectionIfNeeded()
-            }
-            .onChange(of: subscriptions.packageOptions.map(\.id)) { _, _ in
-                seedDefaultSelectionIfNeeded()
-            }
-            .onChange(of: subscriptions.hasProAccess) { _, hasAccess in
-                if hasAccess, dismissable {
-                    dismiss()
+                    await subscriptions.loadOfferings()
+                    seedDefaultSelectionIfNeeded()
                 }
-            }
-            .onAppear {
-                withAnimation(.easeInOut(duration: 0.4)) {
-                    appeared = true
+                .onChange(of: subscriptions.packageOptions.map(\.id)) { _, _ in
+                    seedDefaultSelectionIfNeeded()
                 }
-            }
-            .task {
-                try? await Task.sleep(for: .seconds(3))
-                withAnimation(.easeInOut(duration: 0.3)) {
-                    showCloseButton = true
+                .onChange(of: subscriptions.hasProAccess) { _, hasAccess in
+                    if hasAccess, dismissable {
+                        dismiss()
+                    }
+                }
+                .onAppear {
+                    withAnimation(.easeInOut(duration: 0.4)) {
+                        appeared = true
+                    }
+                }
+                .task {
+                    try? await Task.sleep(for: .seconds(3))
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        showCloseButton = true
+                    }
                 }
             }
         }
@@ -156,7 +161,7 @@ struct RevenueCatPaywallView: View {
                 .scaledToFit()
                 .frame(width: 80, height: 80)
                 .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                
+
 
             Text("Unlock Remodex Pro")
                 .font(AppFont.system(size: 24, weight: .bold))
@@ -169,9 +174,95 @@ struct RevenueCatPaywallView: View {
         .padding(.top, 8)
     }
 
+    private var localTestingUnlockedView: some View {
+        NavigationStack {
+            VStack(spacing: 24) {
+                Spacer(minLength: 0)
+
+                Image("AppLogo")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 86, height: 86)
+                    .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+
+                VStack(spacing: 10) {
+                    Text("免费版已启用")
+                        .font(AppFont.system(size: 26, weight: .bold))
+
+                    Text("这个本地测试构建已经强制解锁 Remodex Pro。你不需要购买、恢复购买或兑换代码，也不会受到 5 次免费消息限制。")
+                        .font(AppFont.body())
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .lineSpacing(4)
+                }
+
+                VStack(alignment: .leading, spacing: 12) {
+                    localTestingStatusRow(icon: "checkmark.seal.fill", title: "Pro 功能", value: "已解锁")
+                    localTestingStatusRow(icon: "creditcard.fill", title: "付费流程", value: "已跳过")
+                    localTestingStatusRow(icon: "server.rack", title: "Bridge / Relay", value: "协议保持不变")
+                }
+                .padding(16)
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(Color(.secondarySystemBackground))
+                )
+
+                Button {
+                    dismiss()
+                } label: {
+                    Text("完成")
+                        .font(AppFont.body(weight: .semibold))
+                        .foregroundStyle(accentForeground)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 52)
+                        .background(accent, in: Capsule())
+                }
+                .buttonStyle(.plain)
+
+                Spacer(minLength: 0)
+            }
+            .padding(24)
+            .background(Color(.systemBackground))
+            .navigationTitle("Remodex 免费版")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                if dismissable {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {
+                            dismiss()
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+            .interactiveDismissDisabled(!dismissable)
+        }
+    }
+
+    private func localTestingStatusRow(icon: String, title: String, value: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.green)
+                .frame(width: 24, height: 24)
+
+            Text(title)
+                .font(AppFont.subheadline(weight: .semibold))
+
+            Spacer(minLength: 12)
+
+            Text(value)
+                .font(AppFont.subheadline())
+                .foregroundStyle(.secondary)
+        }
+    }
+
     // MARK: - Promo banner
 
-   
+
 
     // MARK: - Feature card
 
@@ -187,12 +278,12 @@ struct RevenueCatPaywallView: View {
                         .font(.system(size: 16, weight: .medium))
                         .foregroundStyle(accent)
                         .frame(width: 28, height: 28)
-                    
+
                     Text(feature.title)
                         .font(AppFont.subheadline())
-                    
+
                     Spacer(minLength: 0)
-                    
+
                 }
             }
         }
@@ -231,7 +322,7 @@ struct RevenueCatPaywallView: View {
                     .background(colorScheme == .dark ? Color.white : Color.black)
                     .foregroundStyle(colorScheme == .dark ? Color.black : Color.white)
                     .clipShape(Capsule())
-                   
+
                 }
                 .disabled(subscriptions.isPurchasing || subscriptions.isRestoring)
             }
@@ -393,7 +484,7 @@ struct RevenueCatPaywallView: View {
                 }
             }
             .foregroundStyle(isSelected ? accentForeground : .primary)
-            
+
         }
         .buttonStyle(.plain)
     }
@@ -402,6 +493,10 @@ struct RevenueCatPaywallView: View {
 
     private var isPreviewMode: Bool {
         previewPlans != nil
+    }
+
+    private var shouldShowLocalTestingUnlockedView: Bool {
+        !isPreviewMode && subscriptions.isLocalTestingProAccessEnabled
     }
 
     private var displayedPlans: [RevenueCatPaywallPreviewPlan] {

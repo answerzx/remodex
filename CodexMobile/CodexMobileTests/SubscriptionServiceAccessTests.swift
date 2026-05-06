@@ -1,5 +1,5 @@
 // FILE: SubscriptionServiceAccessTests.swift
-// Purpose: Verifies the local free-send gate allows 5 attempts before the hard paywall path.
+// Purpose: Verifies local test builds stay unlocked and never trip the free-send gate.
 // Layer: Unit Test
 // Exports: SubscriptionServiceAccessTests
 // Depends on: XCTest, CodexMobile
@@ -9,26 +9,28 @@ import XCTest
 
 @MainActor
 final class SubscriptionServiceAccessTests: XCTestCase {
-    func testFreshFreeUserStartsWithFiveAttempts() {
+    func testLocalTestingUserStartsUnlocked() {
         let service = makeService()
 
         XCTAssertEqual(service.freeSendCount, 0)
         XCTAssertEqual(service.remainingFreeSendAttempts, 5)
         XCTAssertTrue(service.hasFreeSendAccess)
+        XCTAssertTrue(service.hasProAccess)
         XCTAssertTrue(service.hasAppAccess)
     }
 
-    func testFreeSendAttemptsStopAtLimit() {
+    func testLocalTestingAccessDoesNotConsumeFreeSendAttempts() {
         let service = makeService()
 
         for _ in 0..<7 {
             service.consumeFreeSendAttemptIfNeeded()
         }
 
-        XCTAssertEqual(service.freeSendCount, 5)
-        XCTAssertEqual(service.remainingFreeSendAttempts, 0)
-        XCTAssertFalse(service.hasFreeSendAccess)
-        XCTAssertFalse(service.hasAppAccess)
+        XCTAssertEqual(service.freeSendCount, 0)
+        XCTAssertEqual(service.remainingFreeSendAttempts, 5)
+        XCTAssertTrue(service.hasFreeSendAccess)
+        XCTAssertTrue(service.hasProAccess)
+        XCTAssertTrue(service.hasAppAccess)
     }
 
     private func makeService() -> SubscriptionService {

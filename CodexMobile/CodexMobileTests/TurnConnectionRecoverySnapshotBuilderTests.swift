@@ -1,5 +1,5 @@
 // FILE: TurnConnectionRecoverySnapshotBuilderTests.swift
-// Purpose: Verifies the turn recovery card only exposes the wake fallback after the silent wake attempt is spent.
+// Purpose: Verifies the turn recovery card keeps reconnect progress ahead of the manual wake fallback.
 // Layer: Unit Test
 // Exports: TurnConnectionRecoverySnapshotBuilderTests
 // Depends on: XCTest, CodexMobile
@@ -26,7 +26,7 @@ final class TurnConnectionRecoverySnapshotBuilderTests: XCTestCase {
         XCTAssertEqual(snapshot?.summary, "Trying to reconnect to your computer.")
     }
 
-    func testReconnectProgressStillShowsBeforeManualWakeFallbackIsUnlocked() {
+    func testReconnectProgressStillShowsWhenManualWakeFallbackIsUnavailable() {
         let snapshot = TurnConnectionRecoverySnapshotBuilder.makeSnapshot(
             hasReconnectCandidate: true,
             isConnected: false,

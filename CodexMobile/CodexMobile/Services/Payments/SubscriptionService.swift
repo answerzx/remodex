@@ -71,18 +71,18 @@ final class SubscriptionService {
     private static let cachedStateDefaultsKey = "codex.subscription.cachedState"
     private static let freeSendCountDefaultsKey = "codex.subscription.freeSendCount"
     private static let freeSendLimit = 5
+    private static let forceLocalTestingProAccess = true
 
     private let defaults: UserDefaults
-    // Keep the task handle nonisolated so `deinit` can cancel it under Swift 6 isolation rules.
-    nonisolated(unsafe) private var customerInfoUpdatesTask: Task<Void, Never>?
+    @ObservationIgnored private var customerInfoUpdatesTask: Task<Void, Never>?
     private var isBootstrapping = false
     private var hasCachedOptimisticAccess = false
 
-    private(set) var bootstrapState: SubscriptionBootstrapState = .idle
+    private(set) var bootstrapState: SubscriptionBootstrapState = SubscriptionService.forceLocalTestingProAccess ? .ready : .idle
     private(set) var customerInfo: CustomerInfo?
     private(set) var currentOffering: Offering?
     private(set) var packageOptions: [SubscriptionPackageOption] = []
-    private(set) var hasProAccess = false
+    private(set) var hasProAccess = SubscriptionService.forceLocalTestingProAccess
     private(set) var freeSendCount = 0
     private(set) var latestPurchaseDate: Date?
     private(set) var willRenew = false
@@ -95,6 +95,7 @@ final class SubscriptionService {
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         restoreCachedStateIfAvailable()
+        applyLocalTestingProAccessIfNeeded()
         startCustomerInfoObserverIfConfigured()
     }
 
@@ -103,19 +104,36 @@ final class SubscriptionService {
     }
 
     var remainingFreeSendAttempts: Int {
-        max(0, Self.freeSendLimit - freeSendCount)
+        if Self.forceLocalTestingProAccess {
+            return Self.freeSendLimit
+        }
+        return max(0, Self.freeSendLimit - freeSendCount)
     }
 
     var hasFreeSendAccess: Bool {
-        freeSendCount < Self.freeSendLimit
+        if Self.forceLocalTestingProAccess {
+            return true
+        }
+        return freeSendCount < Self.freeSendLimit
     }
 
     var hasAppAccess: Bool {
-        hasProAccess || hasFreeSendAccess
+        if Self.forceLocalTestingProAccess {
+            return true
+        }
+        return hasProAccess || hasFreeSendAccess
+    }
+
+    var isLocalTestingProAccessEnabled: Bool {
+        Self.forceLocalTestingProAccess
     }
 
     // Counts a valid send attempt for free users even if the turn later fails.
     func consumeFreeSendAttemptIfNeeded() {
+        guard !Self.forceLocalTestingProAccess else {
+            return
+        }
+
         guard !hasProAccess, freeSendCount < Self.freeSendLimit else {
             return
         }
@@ -126,6 +144,11 @@ final class SubscriptionService {
 
     // Bootstraps subscription state once at launch or from the recovery retry action.
     func bootstrap() async {
+        guard !Self.forceLocalTestingProAccess else {
+            applyLocalTestingProAccessIfNeeded()
+            return
+        }
+
         guard !isBootstrapping else {
             return
         }
@@ -159,6 +182,11 @@ final class SubscriptionService {
 
     // Refreshes the current subscription state without re-entering the blocking bootstrap UI.
     func refreshCustomerInfoSilently() async {
+        guard !Self.forceLocalTestingProAccess else {
+            applyLocalTestingProAccessIfNeeded()
+            return
+        }
+
         guard !isBootstrapping, bootstrapState != .loading else {
             return
         }
@@ -179,6 +207,11 @@ final class SubscriptionService {
 
     // Reads the current RevenueCat offerings and normalizes the package list for SwiftUI.
     func loadOfferings() async {
+        guard !Self.forceLocalTestingProAccess else {
+            applyLocalTestingProAccessIfNeeded()
+            return
+        }
+
         startCustomerInfoObserverIfConfigured()
         isLoading = true
         lastErrorMessage = nil
@@ -190,6 +223,11 @@ final class SubscriptionService {
 
     // Starts a purchase flow for the selected package and refreshes entitlements on success.
     func purchase(_ option: SubscriptionPackageOption) async {
+        guard !Self.forceLocalTestingProAccess else {
+            applyLocalTestingProAccessIfNeeded()
+            return
+        }
+
         guard !isPurchasing else {
             return
         }
@@ -225,6 +263,11 @@ final class SubscriptionService {
 
     // Restores store purchases and then re-checks the Pro entitlement state.
     func restorePurchases() async {
+        guard !Self.forceLocalTestingProAccess else {
+            applyLocalTestingProAccessIfNeeded()
+            return
+        }
+
         guard !isRestoring else {
             return
         }
@@ -252,6 +295,11 @@ final class SubscriptionService {
 
     // Syncs StoreKit purchases that may have happened in Apple's code redemption sheet.
     func syncPurchasesAfterOfferCodeRedemption() async {
+        guard !Self.forceLocalTestingProAccess else {
+            applyLocalTestingProAccessIfNeeded()
+            return
+        }
+
         startCustomerInfoObserverIfConfigured()
         guard Purchases.isConfigured else {
             lastErrorMessage = "Subscriptions are unavailable right now."
@@ -270,6 +318,23 @@ final class SubscriptionService {
 }
 
 private extension SubscriptionService {
+    func applyLocalTestingProAccessIfNeeded() {
+        guard Self.forceLocalTestingProAccess else {
+            return
+        }
+
+        hasProAccess = true
+        hasCachedOptimisticAccess = true
+        bootstrapState = .ready
+        isLoading = false
+        isPurchasing = false
+        isRestoring = false
+        lastErrorMessage = nil
+        freeSendCount = 0
+        defaults.set(freeSendCount, forKey: Self.freeSendCountDefaultsKey)
+        persistCachedState()
+    }
+
     func startCustomerInfoObserverIfConfigured() {
         guard customerInfoUpdatesTask == nil, Purchases.isConfigured else {
             return
@@ -289,6 +354,7 @@ private extension SubscriptionService {
     func handleCustomerInfoStreamUpdate(_ info: CustomerInfo) {
         applyCustomerInfo(info)
         bootstrapState = .ready
+        applyLocalTestingProAccessIfNeeded()
     }
 
     func refreshOfferings(updatesLastError: Bool) async {
@@ -326,6 +392,7 @@ private extension SubscriptionService {
         willRenew = entitlement?.willRenew == true
         managementURL = info.managementURL
         lastErrorMessage = nil
+        applyLocalTestingProAccessIfNeeded()
         persistCachedState()
     }
 
@@ -343,6 +410,7 @@ private extension SubscriptionService {
         willRenew = cachedState.willRenew
         managementURL = cachedState.managementURLString.flatMap(URL.init(string:))
         bootstrapState = cachedState.hasProAccess ? .ready : .idle
+        applyLocalTestingProAccessIfNeeded()
     }
 
     func persistCachedState() {

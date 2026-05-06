@@ -1041,9 +1041,11 @@ extension CodexService {
     func loggedOutGPTAccountSnapshot(
         status: CodexGPTAccountStatus,
         needsReauth: Bool = false,
-        retaining snapshot: CodexGPTAccountSnapshot = codexGPTAccountInitialSnapshot()
+        retaining snapshot: CodexGPTAccountSnapshot? = nil
     ) -> CodexGPTAccountSnapshot {
-        CodexGPTAccountSnapshot(
+        let snapshot = snapshot ?? codexGPTAccountInitialSnapshot()
+
+        return CodexGPTAccountSnapshot(
             status: status,
             authMethod: nil,
             email: needsReauth ? snapshot.email : nil,

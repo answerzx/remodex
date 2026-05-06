@@ -46,7 +46,6 @@ struct ContentView: View {
     @State private var isRetryingBridgeUpdate = false
     @State private var isPreparingManualScanner = false
     @State private var isWakingSavedMacDisplay = false
-    @State private var hasAttemptedAutomaticWakeSavedMacDisplay = false
     @State private var threadCompletionBannerDismissTask: Task<Void, Never>?
     @State private var whatsNewPresentationTask: Task<Void, Never>?
     @State private var sidebarPrewarmTask: Task<Void, Never>?
@@ -163,7 +162,6 @@ struct ContentView: View {
                         scheduleSidebarPrewarmIfNeeded()
                     }
                 } else if phase == .background {
-                    resetSavedMacWakeRecoveryState()
                     teardownSidebarPrewarm()
                 }
             }
@@ -178,15 +176,11 @@ struct ContentView: View {
             .onChange(of: codex.isConnected) { wasConnected, isNowConnected in
                 debugSidebarLog("connection changed wasConnected=\(wasConnected) isConnected=\(isNowConnected)")
                 if !wasConnected, isNowConnected {
-                    resetSavedMacWakeRecoveryState()
                     Task {
                         await codex.requestNotificationPermissionOnFirstLaunchIfNeeded()
                     }
                     scheduleSidebarPrewarmIfNeeded()
                 }
-            }
-            .onChange(of: codex.normalizedRelaySessionId) { _, _ in
-                resetSavedMacWakeRecoveryState()
             }
             .onChange(of: codex.threadCompletionBanner) { _, banner in
                 scheduleThreadCompletionBannerDismiss(for: banner)
@@ -517,29 +511,15 @@ struct ContentView: View {
         manualPairingErrorMessage ?? "Could not resolve that pairing code."
     }
 
-    // Offers a one-tap display wake for the best local-style relay we still know about, even if only the trusted record remains.
+    // Offers manual display wake when the remembered relay session can carry the request.
     private var canWakeSavedMacDisplay: Bool {
         homeConnectionPhase == .offline && codex.canWakePreferredMacDisplay
     }
 
-    // Keep the wake CTA visible whenever the pairing still knows enough to try a display pulse.
+    // Keep display wake manual only; automatic reconnect should not wake the user's monitor.
     private var shouldOfferWakeSavedMacDisplayAction: Bool {
         canWakeSavedMacDisplay
             && codex.supportsDisplayWake
-            && hasAttemptedAutomaticWakeSavedMacDisplay
-            && !isWakingSavedMacDisplay
-    }
-
-    // Keeps the silent wake fallback automatic exactly once per offline cycle before the user taps manually again.
-    private var shouldAttemptAutomaticWakeSavedMacDisplay: Bool {
-        scenePhase == .active
-            && hasSeenOnboarding
-            && !isShowingManualScanner
-            && !isShowingManualPairingEntry
-            && codex.shouldAutoReconnectOnForeground
-            && canWakeSavedMacDisplay
-            && codex.supportsDisplayWake
-            && !hasAttemptedAutomaticWakeSavedMacDisplay
             && !isWakingSavedMacDisplay
     }
 
@@ -553,17 +533,7 @@ struct ContentView: View {
         }
     }
 
-    // Gives the saved local Mac one silent wake attempt before exposing the manual wake affordance.
-    private func attemptAutomaticWakeSavedMacDisplayIfNeeded() async {
-        guard shouldAttemptAutomaticWakeSavedMacDisplay else {
-            return
-        }
-
-        hasAttemptedAutomaticWakeSavedMacDisplay = true
-        await performSavedMacDisplayWakeAttempt(cancelAutoReconnectBeforeWake: false)
-    }
-
-    // Keeps foreground reconnect and the one-shot wake fallback in the same guarded path.
+    // Keeps foreground reconnect guarded by lifecycle state without waking the display automatically.
     private func attemptSavedMacReconnectRecoveryIfNeeded() async {
         guard scenePhase == .active,
               hasSeenOnboarding,
@@ -572,16 +542,10 @@ struct ContentView: View {
             return
         }
 
-        await attemptAutomaticWakeSavedMacDisplayIfNeeded()
         await viewModel.attemptAutoReconnectOnForegroundIfNeeded(codex: codex)
     }
 
-    // Resets the once-per-cycle wake gate after a fresh connection, pairing change, or app background.
-    private func resetSavedMacWakeRecoveryState() {
-        hasAttemptedAutomaticWakeSavedMacDisplay = false
-    }
-
-    // Uses a temporary bridge request to wake display sleep, then unlocks the manual button only if that fails.
+    // Runs only from the user's Wake Screen action.
     private func wakeSavedMacDisplay() {
         Task { @MainActor in
             await performSavedMacDisplayWakeAttempt(cancelAutoReconnectBeforeWake: true)
@@ -605,8 +569,8 @@ struct ContentView: View {
                 codex.schedulePostConnectSyncPass(preferredThreadId: codex.activeThreadId)
             }
         } catch {
-            // Wake failures are expected when the Mac has already gone past display sleep,
-            // so keep automatic reconnect alive instead of surfacing sticky composer errors.
+            // Manual wake failures are expected when the Mac has already gone past display sleep,
+            // so avoid surfacing sticky composer errors.
         }
     }
 

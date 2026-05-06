@@ -20,7 +20,6 @@ struct SettingsView: View {
                 SettingsSubscriptionCard()
                 SettingsBridgeVersionCard()
                 SettingsRuntimeDefaultsCard()
-                SettingsAboutCard()
                 SettingsUsageCard()
                 SettingsConnectionCard()
             }
@@ -346,15 +345,19 @@ private struct SettingsSubscriptionCard: View {
     @State private var isPresentingOfferCodeRedemption = false
 
     var body: some View {
-        SettingsCard(title: "Remodex Pro") {
+        SettingsCard(title: subscriptions.isLocalTestingProAccessEnabled ? "Remodex Pro / 免费版" : "Remodex Pro") {
             HStack {
-                Text("Status")
+                Text("Status / 状态")
                 Spacer()
-                Text(subscriptions.hasProAccess ? "Active" : "Free")
+                Text(subscriptionStatusLabel)
                     .foregroundStyle(subscriptions.hasProAccess ? .green : .secondary)
             }
 
-            if subscriptions.hasProAccess {
+            if subscriptions.isLocalTestingProAccessEnabled {
+                Text("免费版已在本地测试构建中启用：所有 Pro 功能默认开放，不会触发 RevenueCat/StoreKit 购买，也不会消耗 5 次免费消息额度。")
+                    .font(AppFont.caption())
+                    .foregroundStyle(.secondary)
+            } else if subscriptions.hasProAccess {
                 Text("Your Pro access is active. You can still restore purchases or manage the purchase from Apple.")
                     .font(AppFont.caption())
                     .foregroundStyle(.secondary)
@@ -364,21 +367,23 @@ private struct SettingsSubscriptionCard: View {
                     .foregroundStyle(.secondary)
             }
 
-            SettingsButton(subscriptions.hasProAccess ? "View Pro" : "Upgrade to Pro") {
+            SettingsButton(primarySubscriptionButtonTitle) {
                 isPresentingPaywall = true
             }
 
-            SettingsButton("Redeem Code") {
-                isPresentingOfferCodeRedemption = true
-            }
-            .disabled(subscriptions.isPurchasing || subscriptions.isRestoring)
-
-            SettingsButton(subscriptions.isRestoring ? "Restoring..." : "Restore Purchases", isLoading: subscriptions.isRestoring) {
-                Task {
-                    await subscriptions.restorePurchases()
+            if !subscriptions.isLocalTestingProAccessEnabled {
+                SettingsButton("Redeem Code") {
+                    isPresentingOfferCodeRedemption = true
                 }
+                .disabled(subscriptions.isPurchasing || subscriptions.isRestoring)
+
+                SettingsButton(subscriptions.isRestoring ? "Restoring..." : "Restore Purchases", isLoading: subscriptions.isRestoring) {
+                    Task {
+                        await subscriptions.restorePurchases()
+                    }
+                }
+                .disabled(subscriptions.isPurchasing)
             }
-            .disabled(subscriptions.isPurchasing)
 
             if let error = subscriptions.lastErrorMessage, !error.isEmpty {
                 Text(error)
@@ -404,6 +409,22 @@ private struct SettingsSubscriptionCard: View {
             }
             await subscriptions.bootstrap()
         }
+    }
+
+    private var subscriptionStatusLabel: String {
+        if subscriptions.isLocalTestingProAccessEnabled {
+            return "免费版已解锁"
+        }
+
+        return subscriptions.hasProAccess ? "Active" : "Free"
+    }
+
+    private var primarySubscriptionButtonTitle: String {
+        if subscriptions.isLocalTestingProAccessEnabled {
+            return "查看免费版状态"
+        }
+
+        return subscriptions.hasProAccess ? "View Pro" : "Upgrade to Pro"
     }
 }
 
@@ -972,105 +993,6 @@ private struct SettingsArchivedChatsCard: View {
             }
             .buttonStyle(.plain)
         }
-    }
-}
-
-private struct SettingsAboutCard: View {
-    @State private var isShowingAbout = false
-
-    var body: some View {
-        SettingsCard(title: "About") {
-            Text("Chats are End-to-end encrypted between your iPhone and Mac. The relay only sees ciphertext and connection metadata after the secure handshake completes.")
-                .font(AppFont.caption())
-                .foregroundStyle(.secondary)
-
-            Button {
-                HapticFeedback.shared.triggerImpactFeedback(style: .light)
-                isShowingAbout = true
-            } label: {
-                settingsAccessoryRow(
-                    title: "How Remodex Works",
-                    leading: {
-                        Image(systemName: "info.circle")
-                            .font(AppFont.subheadline(weight: .medium))
-                    }
-                )
-            }
-            .buttonStyle(.plain)
-
-            Button {
-                HapticFeedback.shared.triggerImpactFeedback(style: .light)
-                if let url = URL(string: "https://x.com/emanueledpt") {
-                    UIApplication.shared.open(url)
-                }
-            } label: {
-                settingsAccessoryRow(
-                    title: "Chat & Support",
-                    leading: {
-                        Image("x-icon")
-                            .renderingMode(.template)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 14, height: 14)
-                    }
-                )
-            }
-            .buttonStyle(.plain)
-
-            Button {
-                HapticFeedback.shared.triggerImpactFeedback(style: .light)
-                UIApplication.shared.open(AppEnvironment.privacyPolicyURL)
-            } label: {
-                settingsAccessoryRow(
-                    title: "Privacy Policy",
-                    leading: {
-                        Image(systemName: "hand.raised")
-                            .font(AppFont.subheadline(weight: .medium))
-                    }
-                )
-            }
-            .buttonStyle(.plain)
-
-            Button {
-                HapticFeedback.shared.triggerImpactFeedback(style: .light)
-                UIApplication.shared.open(AppEnvironment.termsOfUseURL)
-            } label: {
-                settingsAccessoryRow(
-                    title: "Terms of Use",
-                    leading: {
-                        Image(systemName: "doc.text")
-                            .font(AppFont.subheadline(weight: .medium))
-                    }
-                )
-            }
-            .buttonStyle(.plain)
-        }
-        .fullScreenCover(isPresented: $isShowingAbout) {
-            AboutRemodexView()
-        }
-    }
-
-    // Keeps settings rows visually consistent while allowing SF Symbols or asset icons.
-    private func settingsAccessoryRow<Leading: View>(
-        title: String,
-        @ViewBuilder leading: () -> Leading
-    ) -> some View {
-        HStack(spacing: 8) {
-            leading()
-            Text(title)
-                .font(AppFont.subheadline(weight: .medium))
-            Spacer()
-            Image(systemName: "chevron.right")
-                .font(AppFont.caption(weight: .semibold))
-                .foregroundStyle(.tertiary)
-        }
-        .foregroundStyle(.primary)
-        .padding(.vertical, 10)
-        .padding(.horizontal, 14)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.primary.opacity(0.06))
-        )
     }
 }
 
