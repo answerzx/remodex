@@ -822,6 +822,10 @@ extension CodexService {
         syncRealtimeEnabled && isConnected && isInitialized
     }
 
+    var shouldKeepBackgroundGraceTaskActive: Bool {
+        hasAnyRunningTurn || (isConnected && isInitialized)
+    }
+
     // Prioritizes only desktop-mirrored runs that still lack authoritative assistant deltas.
     func shouldPrioritizeMirroredRunningCatchup(_ threadId: String) -> Bool {
         mirroredRunningCatchupThreadIDs.contains(threadId) && threadHasActiveOrRunningTurn(threadId)
@@ -943,7 +947,8 @@ extension CodexService {
         }
     }
 
-    // Starts or ends the iOS grace window that lets a just-backgrounded run finish cleanly.
+    // Starts or ends the iOS grace window that helps a just-backgrounded
+    // connection survive short app switches.
     func updateBackgroundRunGraceTask() {
         guard !isAppInForeground else {
             backgroundTurnGraceExpiredUntilForeground = false
@@ -951,7 +956,7 @@ extension CodexService {
             return
         }
 
-        guard hasAnyRunningTurn else {
+        guard shouldKeepBackgroundGraceTaskActive else {
             endBackgroundRunGraceTask(reason: "idle")
             return
         }
@@ -965,7 +970,7 @@ extension CodexService {
         }
 
         let taskBox = BackgroundTaskIdentifierBox()
-        let taskID = UIApplication.shared.beginBackgroundTask(withName: "CodexRunGrace") { [weak self, taskBox] in
+        let taskID = UIApplication.shared.beginBackgroundTask(withName: "CodexBackgroundGrace") { [weak self, taskBox] in
             let expiredTaskID = taskBox.taskID
             guard expiredTaskID != .invalid else {
                 return
@@ -980,13 +985,13 @@ extension CodexService {
         }
 
         guard taskID != .invalid else {
-            debugSyncLog("background run grace task unavailable")
+            debugSyncLog("background grace task unavailable")
             return
         }
 
         taskBox.taskID = taskID
         backgroundTurnGraceTaskID = taskID
-        debugSyncLog("background run grace task started")
+        debugSyncLog("background grace task started")
     }
 
     func recordBackgroundRunGraceTaskExpired(taskID: UIBackgroundTaskIdentifier) {
@@ -996,7 +1001,7 @@ extension CodexService {
 
         backgroundTurnGraceTaskID = .invalid
         backgroundTurnGraceExpiredUntilForeground = true
-        debugSyncLog("background run grace task ended reason=expired")
+        debugSyncLog("background grace task ended reason=expired")
     }
 
     func endBackgroundRunGraceTask(reason: String) {
@@ -1007,7 +1012,7 @@ extension CodexService {
         let taskID = backgroundTurnGraceTaskID
         backgroundTurnGraceTaskID = .invalid
         UIApplication.shared.endBackgroundTask(taskID)
-        debugSyncLog("background run grace task ended reason=\(reason)")
+        debugSyncLog("background grace task ended reason=\(reason)")
     }
 
     /// Best-effort server-side archive/unarchive. Failures are logged but never
