@@ -30,6 +30,7 @@ struct AssistantBlockAccessoryState: Equatable {
 private struct TurnTimelineMessageRow: View {
     @Environment(\.inlineCommitAndPushAction) private var inlineCommitAndPushAction
     @Environment(\.inlineCommitAndPushPhase) private var inlineCommitAndPushPhase
+    @Environment(\.gitWorkingDirectorySelectionAction) private var gitWorkingDirectorySelectionAction
 
     let message: CodexMessage
     let isRetryAvailable: Bool
@@ -62,6 +63,7 @@ private struct TurnTimelineMessageRow: View {
                 && message.id == newestStreamingMessageID,
             inlineCommitAndPushAction: inlineCommitAndPushAction,
             inlineCommitAndPushPhase: inlineCommitAndPushPhase,
+            gitWorkingDirectorySelectionAction: gitWorkingDirectorySelectionAction,
             assistantRevertAction: onTapAssistantRevert,
             subagentOpenAction: onTapSubagent
         )

@@ -21,6 +21,8 @@ struct TurnView: View {
     @State private var viewModel = TurnViewModel()
     @State private var isInputFocused = false
     @State private var isShowingThreadPathSheet = false
+    @State private var isShowingGitWorkingDirectoryPicker = false
+    @State private var gitWorkingDirectoryOverride: String?
     @State private var isShowingStatusSheet = false
     @State private var isLoadingRepositoryDiff = false
     @State private var repositoryDiffPresentation: TurnDiffPresentation?
@@ -51,7 +53,7 @@ struct TurnView: View {
         let renderSnapshot = timelineState.renderSnapshot
         let activeTurnID = renderSnapshot.activeTurnID
         let planSessionSource = codex.currentPlanSessionSource(for: thread.id)
-        let gitWorkingDirectory = resolvedThread.gitWorkingDirectory
+        let gitWorkingDirectory = effectiveGitWorkingDirectory(for: resolvedThread)
         let isThreadRunning = renderSnapshot.isThreadRunning
         let isEmptyThread = renderSnapshot.messages.isEmpty
         let threadDisplayPhase = codex.threadDisplayPhase(
@@ -81,12 +83,20 @@ struct TurnView: View {
             isThreadRunning: isThreadRunning,
             gitWorkingDirectory: gitWorkingDirectory
         )
+        let canSelectGitWorkingDirectory = codex.isConnected
+            && !isThreadRunning
+            && !viewModel.isRunningGitAction
+            && !viewModel.isSwitchingGitBranch
+            && !viewModel.isCreatingGitWorktree
         let disabledGitActions: Set<TurnGitActionKind> = viewModel.disabledGitActions
         let onTapMacHandoff: (() -> Void)? = codex.isConnected && codex.supportsDesktopAppHandoff ? {
             isShowingMacHandoffConfirm = true
         } : nil
         let onTapWorktreeHandoff: (() -> Void)? = showsGitControls ? {
-            handleWorktreeHandoffTap(currentThread: resolvedThread)
+            handleWorktreeHandoffTap(
+                currentThread: resolvedThread,
+                gitWorkingDirectory: gitWorkingDirectory
+            )
         } : nil
         let onTapNewChat: (() -> Void)? = codex.isConnected && !isWorktreeProject ? {
             startSiblingChat()
@@ -184,6 +194,9 @@ struct TurnView: View {
                 workingDirectory: gitWorkingDirectory,
                 threadID: thread.id
             )
+        } as (() -> Void)? : nil)
+        .environment(\.gitWorkingDirectorySelectionAction, canSelectGitWorkingDirectory ? {
+            isShowingGitWorkingDirectoryPicker = true
         } as (() -> Void)? : nil)
         .environment(\.inlineCommitAndPushPhase, viewModel.inlineCommitAndPushPhase)
         .navigationTitle(resolvedThread.displayTitle)
@@ -387,6 +400,15 @@ struct TurnView: View {
                     }
                 )
             }
+        }
+        .sheet(isPresented: $isShowingGitWorkingDirectoryPicker) {
+            SidebarLocalFolderBrowserSheet(
+                title: "Select Git Folder",
+                useButtonTitle: "Use for Git",
+                newFolderPromptMessage: "Create this folder on your Mac and use it for Git actions.",
+                initialPath: gitWorkingDirectory,
+                onSelectFolder: selectGitWorkingDirectory
+            )
         }
         .sheet(isPresented: $isShowingStatusSheet) {
             TurnStatusSheet(
@@ -822,6 +844,9 @@ struct TurnView: View {
 
     @ViewBuilder
     private func composerStructuredPromptReplacement(message: CodexMessage) -> some View {
+        let currentThread = currentResolvedThread
+        let gitWorkingDirectory = effectiveGitWorkingDirectory(for: currentThread)
+
         if let request = message.structuredUserInputRequest {
             let isDismissed = viewModel.isStructuredPlanPromptDismissed(request.requestID, codex: codex)
             let isDismissing = viewModel.isStructuredPlanPromptDismissing(request.requestID, codex: codex)
@@ -841,24 +866,24 @@ struct TurnView: View {
                 .padding(.top, 4)
             } else {
                 composerWithSubagentAccessory(
-                    currentThread: currentResolvedThread,
+                    currentThread: currentThread,
                     activeTurnID: codex.activeTurnID(for: thread.id),
                     isThreadRunning: codex.timelineState(for: thread.id).renderSnapshot.isThreadRunning,
                     isEmptyThread: codex.timelineState(for: thread.id).renderSnapshot.messages.isEmpty,
-                    isWorktreeProject: currentResolvedThread.isManagedWorktreeProject,
-                    showsGitControls: codex.isConnected && currentResolvedThread.gitWorkingDirectory != nil,
-                    gitWorkingDirectory: currentResolvedThread.gitWorkingDirectory
+                    isWorktreeProject: currentThread.isManagedWorktreeProject,
+                    showsGitControls: codex.isConnected && gitWorkingDirectory != nil,
+                    gitWorkingDirectory: gitWorkingDirectory
                 )
             }
         } else {
             composerWithSubagentAccessory(
-                currentThread: currentResolvedThread,
+                currentThread: currentThread,
                 activeTurnID: codex.activeTurnID(for: thread.id),
                 isThreadRunning: codex.timelineState(for: thread.id).renderSnapshot.isThreadRunning,
                 isEmptyThread: codex.timelineState(for: thread.id).renderSnapshot.messages.isEmpty,
-                isWorktreeProject: currentResolvedThread.isManagedWorktreeProject,
-                showsGitControls: codex.isConnected && currentResolvedThread.gitWorkingDirectory != nil,
-                gitWorkingDirectory: currentResolvedThread.gitWorkingDirectory
+                isWorktreeProject: currentThread.isManagedWorktreeProject,
+                showsGitControls: codex.isConnected && gitWorkingDirectory != nil,
+                gitWorkingDirectory: gitWorkingDirectory
             )
         }
     }
@@ -891,6 +916,32 @@ struct TurnView: View {
         codex.thread(for: thread.id) ?? thread
     }
 
+    private func effectiveGitWorkingDirectory(for thread: CodexThread) -> String? {
+        normalizedGitWorkingDirectory(gitWorkingDirectoryOverride)
+            ?? normalizedGitWorkingDirectory(thread.gitWorkingDirectory)
+    }
+
+    private func normalizedGitWorkingDirectory(_ path: String?) -> String? {
+        guard let path else { return nil }
+        let trimmedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmedPath.isEmpty ? nil : trimmedPath
+    }
+
+    private func selectGitWorkingDirectory(_ path: String) {
+        guard let normalizedPath = normalizedGitWorkingDirectory(path) else { return }
+        let previousWorkingDirectory = effectiveGitWorkingDirectory(for: currentResolvedThread)
+
+        gitWorkingDirectoryOverride = normalizedPath
+        if normalizedPath != previousWorkingDirectory {
+            viewModel.resetGitStateForWorkingDirectoryChange()
+        }
+        viewModel.refreshGitBranchTargets(
+            codex: codex,
+            workingDirectory: normalizedPath,
+            threadID: thread.id
+        )
+    }
+
     // Reuses the same running-thread gate as Stop/Git actions so worktree handoff never races a live run.
     private func isWorktreeHandoffAvailable(
         isThreadRunning: Bool,
@@ -913,7 +964,10 @@ struct TurnView: View {
         ) && !viewModel.isCreatingGitWorktree
     }
 
-    private func handleWorktreeHandoffTap(currentThread: CodexThread) {
+    private func handleWorktreeHandoffTap(
+        currentThread: CodexThread,
+        gitWorkingDirectory: String?
+    ) {
         if currentThread.isManagedWorktreeProject {
             Task { @MainActor in
                 do {
@@ -951,7 +1005,7 @@ struct TurnView: View {
             do {
                 let outcome = try await WorktreeFlowCoordinator.handoffThreadToWorktree(
                     threadID: thread.id,
-                    sourceProjectPath: currentThread.gitWorkingDirectory,
+                    sourceProjectPath: gitWorkingDirectory,
                     associatedWorktreePath: associatedWorktreePath,
                     codex: codex
                 )
@@ -1489,7 +1543,10 @@ struct TurnView: View {
                     isShowingForkWorktree = true
                 },
                 onOpenWorktreeHandoff: {
-                    handleWorktreeHandoffTap(currentThread: currentThread)
+                    handleWorktreeHandoffTap(
+                        currentThread: currentThread,
+                        gitWorkingDirectory: gitWorkingDirectory
+                    )
                 },
                 onOpenFeedbackMail: {
                     openURL(AppEnvironment.feedbackMailtoURL(

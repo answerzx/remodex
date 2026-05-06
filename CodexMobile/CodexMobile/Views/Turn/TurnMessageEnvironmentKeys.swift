@@ -2,7 +2,7 @@
 // Purpose: SwiftUI environment keys for turn-scoped actions such as reconnect, inline commit/push, assistant revert, and subagent open.
 // Layer: View Support
 // Exports: EnvironmentValues.reconnectAction, EnvironmentValues.wakeMacDisplayAction, EnvironmentValues.inlineCommitAndPushAction,
-//   EnvironmentValues.assistantRevertAction, EnvironmentValues.subagentOpenAction
+//   EnvironmentValues.gitWorkingDirectorySelectionAction, EnvironmentValues.assistantRevertAction, EnvironmentValues.subagentOpenAction
 // Depends on: SwiftUI, CodexMessage
 
 import SwiftUI
@@ -37,6 +37,17 @@ extension EnvironmentValues {
     var inlineCommitAndPushAction: (() -> Void)? {
         get { self[InlineCommitAndPushActionKey.self] }
         set { self[InlineCommitAndPushActionKey.self] = newValue }
+    }
+}
+
+private struct GitWorkingDirectorySelectionActionKey: EnvironmentKey {
+    static let defaultValue: (() -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    var gitWorkingDirectorySelectionAction: (() -> Void)? {
+        get { self[GitWorkingDirectorySelectionActionKey.self] }
+        set { self[GitWorkingDirectorySelectionActionKey.self] = newValue }
     }
 }
 

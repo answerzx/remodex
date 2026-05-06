@@ -11,6 +11,10 @@ struct SidebarLocalFolderBrowserSheet: View {
     @Environment(CodexService.self) private var codex
     @Environment(\.dismiss) private var dismiss
 
+    let title: String
+    let useButtonTitle: String
+    let newFolderPromptMessage: String
+    let initialPath: String?
     let onSelectFolder: (String) -> Void
 
     @State private var quickLocations: [CodexProjectLocation] = []
@@ -37,6 +41,20 @@ struct SidebarLocalFolderBrowserSheet: View {
         "\(currentPath ?? "")\n\(searchText)"
     }
 
+    init(
+        title: String = "Add Local Folder",
+        useButtonTitle: String = "Use",
+        newFolderPromptMessage: String = "Create this folder on your Mac and start a chat there.",
+        initialPath: String? = nil,
+        onSelectFolder: @escaping (String) -> Void
+    ) {
+        self.title = title
+        self.useButtonTitle = useButtonTitle
+        self.newFolderPromptMessage = newFolderPromptMessage
+        self.initialPath = initialPath
+        self.onSelectFolder = onSelectFolder
+    }
+
     var body: some View {
         NavigationStack {
             List {
@@ -57,7 +75,7 @@ struct SidebarLocalFolderBrowserSheet: View {
                     onSelect: openDirectory
                 )
             }
-            .navigationTitle("Add Local Folder")
+            .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .searchable(text: $searchText, prompt: "Search folders")
             .toolbar {
@@ -73,7 +91,7 @@ struct SidebarLocalFolderBrowserSheet: View {
                     }
                     .disabled(currentPath == nil || isCreatingFolder)
 
-                    Button("Use", action: useCurrentFolder)
+                    Button(useButtonTitle, action: useCurrentFolder)
                         .disabled(currentPath == nil)
                 }
             }
@@ -91,7 +109,7 @@ struct SidebarLocalFolderBrowserSheet: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Create this folder on your Mac and start a chat there.")
+            Text(newFolderPromptMessage)
         }
     }
 
@@ -119,7 +137,10 @@ struct SidebarLocalFolderBrowserSheet: View {
         do {
             let locations = try await codex.fetchProjectQuickLocations()
             quickLocations = locations
-            let startPath = locations.first(where: { $0.id == "developer" })?.path ?? locations.first?.path
+            let normalizedInitialPath = initialPath?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let startPath = normalizedInitialPath?.isEmpty == false
+                ? normalizedInitialPath
+                : locations.first(where: { $0.id == "developer" })?.path ?? locations.first?.path
             if let startPath {
                 await loadDirectory(startPath)
             } else {

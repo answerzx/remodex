@@ -1160,6 +1160,7 @@ struct MessageRow: View, Equatable {
     // Passed as init params so .equatable() can invalidate only for row-visible action state.
     var inlineCommitAndPushAction: (() -> Void)? = nil
     var inlineCommitAndPushPhase: InlineCommitAndPushPhase? = nil
+    var gitWorkingDirectorySelectionAction: (() -> Void)? = nil
     var assistantRevertAction: ((CodexMessage) -> Void)? = nil
     var subagentOpenAction: ((CodexSubagentThreadPresentation) -> Void)? = nil
     @State private var previewImage: PreviewImagePayload?
@@ -1180,6 +1181,7 @@ struct MessageRow: View, Equatable {
             && lhs.showsStreamingAnimations == rhs.showsStreamingAnimations
             && (lhs.inlineCommitAndPushAction != nil) == (rhs.inlineCommitAndPushAction != nil)
             && lhs.inlineCommitAndPushPhase == rhs.inlineCommitAndPushPhase
+            && (lhs.gitWorkingDirectorySelectionAction != nil) == (rhs.gitWorkingDirectorySelectionAction != nil)
     }
 
     // Computed once per body evaluation and reused by all sub-views.
@@ -1849,6 +1851,15 @@ struct MessageRow: View, Equatable {
         inlineCommitAndPushPhase?.title ?? "Commit & Push"
     }
 
+    private var gitWorkingDirectorySelectionTitle: String {
+        guard let currentWorkingDirectory else {
+            return "Repo"
+        }
+
+        let folderName = currentWorkingDirectory.split(separator: "/").last.map(String.init) ?? ""
+        return folderName.isEmpty ? "Repo" : folderName
+    }
+
     @ViewBuilder
     private var turnEndActionButtons: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -1889,6 +1900,29 @@ struct MessageRow: View, Equatable {
                                 messageID: message.id
                             )
                         }
+                    }
+
+                    if let action = gitWorkingDirectorySelectionAction {
+                        Button {
+                            HapticFeedback.shared.triggerImpactFeedback(style: .light)
+                            action()
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "folder")
+                                    .font(AppFont.system(size: 12, weight: .medium))
+                                Text(gitWorkingDirectorySelectionTitle)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                    .frame(maxWidth: 110, alignment: .leading)
+                            }
+                            .font(AppFont.mono(.body))
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .adaptiveGlass(.regular, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Select Git folder")
+                        .disabled(isInlineCommitAndPushRunning)
                     }
 
                     if let action = inlineCommitAndPushAction {

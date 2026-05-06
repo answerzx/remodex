@@ -294,6 +294,7 @@ final class TurnViewModel {
     @ObservationIgnored var skillAutocompleteDebounceTask: Task<Void, Never>?
     @ObservationIgnored var pluginAutocompleteDebounceTask: Task<Void, Never>?
     @ObservationIgnored var gitStatusRefreshTask: Task<Void, Never>?
+    @ObservationIgnored var gitBranchTargetsRequestID: UUID?
     @ObservationIgnored var pendingGitBranchOperation: GitBranchUserOperation?
     @ObservationIgnored var pendingGitWorktreeOpenHandler: ((GitCreateWorktreeResult) -> Void)?
     @ObservationIgnored var pendingManagedGitWorktreeOpenHandler: ((GitCreateManagedWorktreeResult) -> Void)?
@@ -342,6 +343,24 @@ final class TurnViewModel {
         pluginAutocompleteDebounceTask = nil
         gitStatusRefreshTask?.cancel()
         gitStatusRefreshTask = nil
+        gitBranchTargetsRequestID = nil
+        isLoadingGitBranchTargets = false
+    }
+
+    func resetGitStateForWorkingDirectoryChange() {
+        gitStatusRefreshTask?.cancel()
+        gitStatusRefreshTask = nil
+        gitBranchTargetsRequestID = nil
+        isLoadingGitBranchTargets = false
+        gitSyncAlert = nil
+        currentGitBranch = ""
+        availableGitBranchTargets = []
+        gitBranchesCheckedOutElsewhere = []
+        gitWorktreePathsByBranch = [:]
+        gitLocalCheckoutPath = nil
+        gitDefaultBranch = ""
+        selectedGitBaseBranch = ""
+        gitRepoSync = nil
     }
 
     func activateThread(threadID: String, codex: CodexService, onComplete: @escaping () -> Void) {
