@@ -7,9 +7,6 @@
 import Foundation
 
 private let minimumBridgePackageUpdateCommand = "npm install -g remodex@latest"
-private let forcedBridgeUpgradeFromVersion = "1.3.8"
-private let forcedBridgeUpgradeTargetVersion = "1.3.9"
-private let forcedBridgeUpgradeCommand = "npm install -g remodex@1.3.9"
 
 enum CodexGPTAccountStatus: String, Codable, Sendable {
     case unknown
@@ -813,73 +810,8 @@ extension CodexService {
         )
     }
 
-    // Surfaces a softer "npm update available" prompt without overriding stricter compatibility prompts.
+    // Local fork builds deliberately avoid prompting users to install upstream npm releases.
     private func evaluateAvailableBridgePackageVersionPromptIfNeeded() {
-        guard isAppInForeground else {
-            return
-        }
-
-        guard bridgeUpdatePrompt == nil else {
-            return
-        }
-
-        guard let installedVersion = normalizedBridgePackageVersion(bridgeInstalledVersion) else {
-            return
-        }
-
-        if installedVersion == forcedBridgeUpgradeFromVersion {
-            guard lastPresentedAvailableBridgePackageVersion != forcedBridgeUpgradeTargetVersion else {
-                return
-            }
-
-            lastPresentedAvailableBridgePackageVersion = forcedBridgeUpgradeTargetVersion
-            bridgeUpdatePrompt = forcedBridgePackageUpdatePrompt(currentVersion: installedVersion)
-            return
-        }
-
-        guard let latestVersion = normalizedBridgePackageVersion(latestBridgePackageVersion),
-              installedVersion.compare(latestVersion, options: .numeric) == .orderedAscending else {
-            return
-        }
-
-        guard lastPresentedAvailableBridgePackageVersion != latestVersion else {
-            return
-        }
-
-        lastPresentedAvailableBridgePackageVersion = latestVersion
-        bridgeUpdatePrompt = availableBridgePackageUpdatePrompt(
-            currentVersion: installedVersion,
-            latestVersion: latestVersion
-        )
-    }
-
-    // Keeps version comparisons and prompt copy on one normalized representation.
-    private func normalizedBridgePackageVersion(_ value: String?) -> String? {
-        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !trimmed.isEmpty else {
-            return nil
-        }
-
-        return trimmed
-    }
-
-    private func availableBridgePackageUpdatePrompt(
-        currentVersion: String,
-        latestVersion: String
-    ) -> CodexBridgeUpdatePrompt {
-        CodexBridgeUpdatePrompt(
-            title: "A newer Remodex update is available on your computer",
-            message: "This computer bridge is running Remodex \(currentVersion), and npm now has Remodex \(latestVersion). Update the package on your computer when you're ready, then reconnect to start using the newer build.",
-            command: minimumBridgePackageUpdateCommand
-        )
-    }
-
-    private func forcedBridgePackageUpdatePrompt(currentVersion: String) -> CodexBridgeUpdatePrompt {
-        CodexBridgeUpdatePrompt(
-            title: "Update Remodex on your computer to reconnect",
-            message: "This computer bridge is running Remodex \(currentVersion). Update the Remodex CLI on your computer to \(forcedBridgeUpgradeTargetVersion), then reconnect.",
-            command: forcedBridgeUpgradeCommand
-        )
     }
 
     // Opens the pending ChatGPT login URL on the bridge Mac instead of opening Safari on iPhone.

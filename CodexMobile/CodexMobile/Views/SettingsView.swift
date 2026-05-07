@@ -845,9 +845,9 @@ private struct SettingsBridgeVersionCard: View {
             )
 
             settingsVersionRow(
-                title: "Latest available",
-                value: latestVersionLabel,
-                valueStyle: .primary
+                title: "Update checks",
+                value: "Disabled",
+                valueStyle: .secondary
             )
 
             if let guidance = guidanceText {
@@ -871,76 +871,32 @@ private struct SettingsBridgeVersionCard: View {
         normalizedVersion(codex.bridgeInstalledVersion) ?? "Unknown"
     }
 
-    private var latestVersionLabel: String {
-        normalizedVersion(codex.latestBridgePackageVersion) ?? "Unknown"
-    }
-
     private var guidanceText: String? {
-        guard let installedVersion else {
+        guard installedVersion != nil else {
             return "Connect to a computer bridge to read the installed package version."
         }
 
-        guard let latestVersion else {
-            return "Installed version detected. The latest published package is unavailable right now."
-        }
-
-        if installedVersion == latestVersion {
-            return "The installed bridge matches the latest published package."
-        }
-
-        if installedVersion.compare(latestVersion, options: .numeric) == .orderedAscending {
-            return "A newer Remodex package is available on npm."
-        }
-
-        return "This Mac is running a different build than the current npm latest."
+        return "This local fork does not check npm for upstream Remodex updates."
     }
 
     private var versionStatusLabel: String {
-        guard let installedVersion else {
+        guard installedVersion != nil else {
             return "Unknown"
         }
 
-        guard let latestVersion else {
-            return "Installed"
-        }
-
-        if installedVersion == latestVersion {
-            return "Up to date"
-        }
-
-        if installedVersion.compare(latestVersion, options: .numeric) == .orderedAscending {
-            return "Update available"
-        }
-
-        return "Different build"
+        return "Local build"
     }
 
     private var guidanceColor: Color {
-        guard let installedVersion,
-              let latestVersion,
-              installedVersion.compare(latestVersion, options: .numeric) == .orderedAscending else {
-            return .secondary
-        }
-
-        return .orange
+        .secondary
     }
 
     private var installedValueStyle: Color {
-        guard let installedVersion,
-              let latestVersion,
-              installedVersion.compare(latestVersion, options: .numeric) == .orderedAscending else {
-            return .primary
-        }
-
-        return .orange
+        .primary
     }
 
     private var installedVersion: String? {
         normalizedVersion(codex.bridgeInstalledVersion)
-    }
-
-    private var latestVersion: String? {
-        normalizedVersion(codex.latestBridgePackageVersion)
     }
 
     private func normalizedVersion(_ value: String?) -> String? {

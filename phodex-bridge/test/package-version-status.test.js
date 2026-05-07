@@ -27,6 +27,7 @@ test("readBridgePackageVersionStatus returns immediately while latest version lo
   const deferred = createDeferred();
   let fetchCallCount = 0;
   const readBridgePackageVersionStatus = createBridgePackageVersionStatusReader({
+    checkPublishedVersion: true,
     emptyCacheRetryMs: 0,
     initialFetchWaitMs: 0,
     fetchLatestPublishedVersionImpl: async () => {
@@ -51,9 +52,26 @@ test("readBridgePackageVersionStatus returns immediately while latest version lo
   assert.equal(secondResult.bridgeLatestVersion, "9.9.9");
 });
 
+test("readBridgePackageVersionStatus disables npm update checks by default for local forks", async () => {
+  let fetchCallCount = 0;
+  const readBridgePackageVersionStatus = createBridgePackageVersionStatusReader({
+    fetchLatestPublishedVersionImpl: async () => {
+      fetchCallCount += 1;
+      return "9.9.9";
+    },
+  });
+
+  const result = await readBridgePackageVersionStatus();
+
+  assert.equal(fetchCallCount, 0);
+  assert.equal(result.bridgeVersion, bridgePackageVersion);
+  assert.equal(result.bridgeLatestVersion, bridgePackageVersion);
+});
+
 test("readBridgePackageVersionStatus includes the latest version on the first read when the fetch resolves quickly", async () => {
   let fetchCallCount = 0;
   const readBridgePackageVersionStatus = createBridgePackageVersionStatusReader({
+    checkPublishedVersion: true,
     emptyCacheRetryMs: 0,
     initialFetchWaitMs: 50,
     fetchLatestPublishedVersionImpl: async () => {
@@ -79,6 +97,7 @@ test("readBridgePackageVersionStatus serves stale cache immediately while revali
     return deferred.promise;
   };
   const readBridgePackageVersionStatus = createBridgePackageVersionStatusReader({
+    checkPublishedVersion: true,
     cacheTtlMs: 0,
     emptyCacheRetryMs: 0,
     initialFetchWaitMs: 0,

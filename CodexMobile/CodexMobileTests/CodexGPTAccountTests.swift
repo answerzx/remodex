@@ -120,7 +120,7 @@ final class CodexGPTAccountTests: XCTestCase {
         XCTAssertFalse(service.gptVoiceRequiresLogin)
     }
 
-    func testRefreshBridgeVersionStatePresentsOptionalBridgeUpdateWhenLatestIsNewer() async {
+    func testRefreshBridgeVersionStateDoesNotPresentOptionalBridgeUpdateForLocalFork() async {
         let service = makeService()
         service.isConnected = true
 
@@ -146,11 +146,7 @@ final class CodexGPTAccountTests: XCTestCase {
 
         XCTAssertEqual(service.bridgeInstalledVersion, "1.3.9")
         XCTAssertEqual(service.latestBridgePackageVersion, "1.4.0")
-        XCTAssertEqual(
-            service.bridgeUpdatePrompt?.title,
-            "A newer Remodex update is available on your Mac"
-        )
-        XCTAssertEqual(service.bridgeUpdatePrompt?.command, "npm install -g remodex@latest")
+        XCTAssertNil(service.bridgeUpdatePrompt)
         XCTAssertEqual(service.gptAccountSnapshot.status, .unknown)
     }
 
@@ -181,7 +177,7 @@ final class CodexGPTAccountTests: XCTestCase {
         XCTAssertNil(service.bridgeUpdatePrompt)
     }
 
-    func testRefreshBridgeVersionStateDoesNotRepeatOptionalBridgeUpdateForSameLatestVersion() async {
+    func testRefreshBridgeVersionStateKeepsOptionalBridgeUpdatesDisabledAcrossRefreshes() async {
         let service = makeService()
         service.isConnected = true
 
@@ -209,7 +205,7 @@ final class CodexGPTAccountTests: XCTestCase {
         service.bridgeUpdatePrompt = nil
         await service.refreshBridgeVersionState(allowAvailableBridgeUpdatePrompt: true)
 
-        XCTAssertNotNil(firstPrompt)
+        XCTAssertNil(firstPrompt)
         XCTAssertNil(service.bridgeUpdatePrompt)
     }
 
@@ -243,10 +239,7 @@ final class CodexGPTAccountTests: XCTestCase {
 
         XCTAssertEqual(service.bridgeInstalledVersion, "1.3.9")
         XCTAssertEqual(service.latestBridgePackageVersion, "1.4.0")
-        XCTAssertEqual(
-            service.bridgeUpdatePrompt?.title,
-            "A newer Remodex update is available on your Mac"
-        )
+        XCTAssertNil(service.bridgeUpdatePrompt)
     }
 
     func testStartOrResumeGPTLoginUsesChatGPTVariantAndCachesPendingURL() async throws {

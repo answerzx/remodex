@@ -1,5 +1,5 @@
 // FILE: package-version-status.js
-// Purpose: Reads the installed Remodex package version and caches the latest published npm version.
+// Purpose: Reports the installed Remodex package version without prompting local forks to update from npm.
 // Layer: CLI helper
 // Exports: createBridgePackageVersionStatusReader
 // Depends on: https, ../package.json
@@ -13,12 +13,24 @@ const DEFAULT_INITIAL_FETCH_WAIT_MS = 250;
 const REMODEX_REGISTRY_URL = "https://registry.npmjs.org/remodex/latest";
 
 function createBridgePackageVersionStatusReader({
+  checkPublishedVersion = false,
   cacheTtlMs = DEFAULT_CACHE_TTL_MS,
   emptyCacheRetryMs = DEFAULT_EMPTY_CACHE_RETRY_MS,
   initialFetchWaitMs = DEFAULT_INITIAL_FETCH_WAIT_MS,
   registryUrl = REMODEX_REGISTRY_URL,
   fetchLatestPublishedVersionImpl = fetchLatestPublishedVersion,
 } = {}) {
+  const normalizedInstalledVersion = normalizeVersion(installedVersion);
+
+  if (!checkPublishedVersion) {
+    return async function readBridgePackageVersionStatus() {
+      return {
+        bridgeVersion: normalizedInstalledVersion || null,
+        bridgeLatestVersion: normalizedInstalledVersion || null,
+      };
+    };
+  }
+
   let cachedLatestVersion = "";
   let lastSuccessfulResolveAt = 0;
   let lastAttemptedAt = 0;
@@ -59,7 +71,7 @@ function createBridgePackageVersionStatusReader({
     });
 
     return {
-      bridgeVersion: normalizeVersion(installedVersion) || null,
+      bridgeVersion: normalizedInstalledVersion || null,
       bridgeLatestVersion: reportedLatestVersion || null,
     };
   };

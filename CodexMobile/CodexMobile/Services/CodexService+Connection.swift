@@ -162,7 +162,6 @@ extension CodexService {
         supportsTurnPagination = true
         hasPresentedThreadForkBridgeUpdatePrompt = false
         hasPresentedMinimumBridgePackageUpdatePrompt = false
-        lastPresentedAvailableBridgePackageVersion = nil
         clearAllRunningState()
         readyThreadIDs.removeAll()
         failedThreadIDs.removeAll()
@@ -557,7 +556,6 @@ extension CodexService {
         supportsTurnPagination = true
         hasPresentedThreadForkBridgeUpdatePrompt = false
         hasPresentedMinimumBridgePackageUpdatePrompt = false
-        lastPresentedAvailableBridgePackageVersion = nil
         clearAllRunningState()
         readyThreadIDs.removeAll()
         failedThreadIDs.removeAll()
