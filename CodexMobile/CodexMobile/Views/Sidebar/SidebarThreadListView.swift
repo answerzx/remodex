@@ -35,6 +35,10 @@ struct SidebarThreadListView: View {
     // Tracks project sections whose preview cap was manually lifted with Show more.
     @State private var revealedProjectGroupIDs: Set<String> = []
 
+    private var firstProjectGroupID: String? {
+        groups.first(where: { $0.kind == .project })?.id
+    }
+
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
@@ -154,16 +158,19 @@ struct SidebarThreadListView: View {
     private func conversationsGroupSection(_ group: SidebarThreadGroup) -> some View {
         let hierarchy = SidebarSubagentHierarchy(groupThreads: group.threads)
 
-        return VStack(spacing: 2) {
-            ForEach(hierarchy.rootThreads) { thread in
-                threadRowTree(
-                    thread,
-                    childrenByParentID: hierarchy.childrenByParentID
-                )
+        return VStack(alignment: .leading, spacing: 0) {
+            sidebarSectionHeader("Conversations")
+
+            VStack(spacing: 2) {
+                ForEach(hierarchy.rootThreads) { thread in
+                    threadRowTree(
+                        thread,
+                        childrenByParentID: hierarchy.childrenByParentID
+                    )
+                }
             }
+            .padding(.bottom, 14)
         }
-        .padding(.top, 6)
-        .padding(.bottom, 14)
     }
 
     private func projectGroupSection(_ group: SidebarThreadGroup) -> some View {
@@ -182,6 +189,10 @@ struct SidebarThreadListView: View {
         )
 
         return VStack(alignment: .leading, spacing: 0) {
+            if group.id == firstProjectGroupID {
+                sidebarSectionHeader("Projects")
+            }
+
             projectHeader(group)
 
             if expandedProjectGroupIDs.contains(group.id) {
@@ -203,6 +214,16 @@ struct SidebarThreadListView: View {
                 .transition(.opacity)
             }
         }
+    }
+
+    private func sidebarSectionHeader(_ title: String) -> some View {
+        Text(title)
+            .font(AppFont.caption(weight: .semibold))
+            .foregroundStyle(.secondary)
+            .textCase(.uppercase)
+            .padding(.horizontal, 16)
+            .padding(.top, 18)
+            .padding(.bottom, 6)
     }
 
     @State private var showMoreChevronRotated = false
@@ -302,7 +323,7 @@ struct SidebarThreadListView: View {
             }
         }
         .padding(.horizontal, 16)
-        .padding(.top, 18)
+        .padding(.top, group.id == firstProjectGroupID ? 4 : 10)
         .padding(.bottom, 10)
     }
 

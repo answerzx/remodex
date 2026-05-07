@@ -212,12 +212,12 @@ enum SidebarThreadGrouping {
         }
 
         return groups.sorted { lhs, rhs in
-            if lhs.sortDate != rhs.sortDate {
-                return lhs.sortDate > rhs.sortDate
-            }
-
             if lhs.kind != rhs.kind {
                 return lhs.kind.sortRank < rhs.kind.sortRank
+            }
+
+            if lhs.sortDate != rhs.sortDate {
+                return lhs.sortDate > rhs.sortDate
             }
 
             if lhs.label != rhs.label {
@@ -354,9 +354,9 @@ enum SidebarThreadGrouping {
 private extension SidebarThreadGroupKind {
     var sortRank: Int {
         switch self {
-        case .conversations:
-            return 0
         case .project:
+            return 0
+        case .conversations:
             return 1
         case .pinned:
             return 2

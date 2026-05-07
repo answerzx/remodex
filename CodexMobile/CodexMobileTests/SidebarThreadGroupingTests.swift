@@ -186,11 +186,23 @@ final class SidebarThreadGroupingTests: XCTestCase {
             now: now
         )
 
-        XCTAssertEqual(groups.map(\.id), ["conversations", "project:/Users/me/work/site"])
-        XCTAssertEqual(groups[0].kind, .conversations)
-        XCTAssertEqual(groups[0].threads.map(\.id), ["plain-thread"])
+        XCTAssertEqual(groups.map(\.id), ["project:/Users/me/work/site", "conversations"])
         let projectGroup = try XCTUnwrap(groups.first { $0.kind == .project })
         XCTAssertEqual(projectGroup.threads.map(\.id), ["project-thread"])
+        let conversationGroup = try XCTUnwrap(groups.first { $0.kind == .conversations })
+        XCTAssertEqual(conversationGroup.threads.map(\.id), ["plain-thread"])
+    }
+
+    func testMakeGroupsKeepsProjectsBeforePlainConversations() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let threads = [
+            makeThread(id: "plain-thread", updatedAt: now, cwd: nil),
+            makeThread(id: "project-thread", updatedAt: now.addingTimeInterval(-60), cwd: "/Users/me/work/site"),
+        ]
+
+        let groups = SidebarThreadGrouping.makeGroups(from: threads, now: now)
+
+        XCTAssertEqual(groups.map(\.id), ["project:/Users/me/work/site", "conversations"])
     }
 
     func testDesktopProjectStateProjectChoicesExcludeProjectlessCwdThreads() {
