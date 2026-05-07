@@ -159,6 +159,38 @@ test("readBridgeConfig uses only the packaged relay default outside a source che
   assert.equal(config.pushServiceUrl, "");
 });
 
+test("readBridgeConfig reuses the persisted relay when no env override is set", () => {
+  const stateRoot = fs.mkdtempSync(path.join(os.tmpdir(), "remodex-state-"));
+  fs.writeFileSync(
+    path.join(stateRoot, "daemon-config.json"),
+    JSON.stringify({ relayUrl: "wss://persisted.example/relay" }),
+    "utf8"
+  );
+
+  const config = readBridgeConfig({
+    env: {
+      REMODEX_DEVICE_STATE_DIR: stateRoot,
+    },
+    runtimeRoot: "/workspace/phodex-bridge",
+    fsImpl: {
+      existsSync(targetPath) {
+        return targetPath === path.join(stateRoot, "daemon-config.json")
+          || targetPath === "/workspace/.git";
+      },
+      readFileSync(targetPath) {
+        if (targetPath === path.join(stateRoot, "daemon-config.json")) {
+          return fs.readFileSync(targetPath, "utf8");
+        }
+        throw new Error(`unexpected read: ${targetPath}`);
+      },
+    },
+  });
+
+  assert.equal(config.relayUrl, "wss://persisted.example/relay");
+  assert.equal(config.pushServiceUrl, "");
+  fs.rmSync(stateRoot, { recursive: true, force: true });
+});
+
 test("readBridgeConfig uses a packaged push default only when it is explicitly provided", () => {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "remodex-package-"));
   const srcDir = path.join(tempRoot, "src");
