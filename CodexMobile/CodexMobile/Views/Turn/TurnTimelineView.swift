@@ -1343,14 +1343,13 @@ struct TurnTimelineView<EmptyState: View, Composer: View>: View {
         }
     }
 
-    /// Coalesces rapid follow-bottom scrolls into at most one per display frame,
-    /// preventing discrete jumps on every streaming delta.
+    /// Coalesces rapid follow-bottom scrolls so streaming text edits do not fight layout/focus.
     private func scheduleFollowBottomScroll(using proxy: ScrollViewProxy) {
         guard followBottomScrollTask == nil else { return }
         let expectedThreadID = threadID
         followBottomScrollTask = Task { @MainActor in
             defer { followBottomScrollTask = nil }
-            try? await Task.sleep(nanoseconds: 16_000_000) // ~1 display frame
+            try? await Task.sleep(nanoseconds: 120_000_000)
             guard !Task.isCancelled,
                   scrollSessionThreadID == expectedThreadID,
                   !shouldPauseAutomaticScrolling else {

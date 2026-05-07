@@ -303,7 +303,6 @@ private struct StreamingAssistantMarkdownTextView: View {
     var constrainsToAvailableWidth: Bool = false
 
     @State private var displayedText = ""
-    @State private var displayedSegments: StreamingMarkdownBlockSegments
 
     init(
         text: String,
@@ -314,16 +313,21 @@ private struct StreamingAssistantMarkdownTextView: View {
         self.enablesSelection = enablesSelection
         self.constrainsToAvailableWidth = constrainsToAvailableWidth
         _displayedText = State(initialValue: text)
-        _displayedSegments = State(initialValue: StreamingMarkdownBlockSplitter.split(text))
     }
 
     var body: some View {
+        let rendered = Text(displayedText)
+            .font(AppFont.body())
+            .foregroundStyle(.primary)
+            .fixedSize(horizontal: false, vertical: true)
+
         Group {
             if constrainsToAvailableWidth {
-                renderedSegments(displayedSegments)
+                rendered
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .clipped()
             } else {
-                renderedSegments(displayedSegments)
+                rendered
             }
         }
         .onAppear {
@@ -334,36 +338,12 @@ private struct StreamingAssistantMarkdownTextView: View {
         }
     }
 
-    @ViewBuilder
-    private func renderedSegments(_ segments: StreamingMarkdownBlockSegments) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ForEach(segments.stableChunks) { chunk in
-                MarkdownTextView(
-                    text: chunk.text,
-                    profile: .assistantProse,
-                    enablesSelection: enablesSelection,
-                    constrainsToAvailableWidth: constrainsToAvailableWidth
-                )
-            }
-
-            if !segments.activeMarkdown.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                MarkdownTextView(
-                    text: segments.activeMarkdown,
-                    profile: .assistantProse,
-                    enablesSelection: enablesSelection,
-                    constrainsToAvailableWidth: constrainsToAvailableWidth,
-                    usesCaches: false
-                )
-            }
-        }
-    }
-
-    // Keep streaming append-oriented while promoting completed blocks to cached markdown.
+    // During streaming, behave like a chat client's in-place message edit: append text cheaply,
+    // then let the finalized row switch back to full Markdown/code rendering.
     private func reconcileDisplayedText(with nextText: String) {
         guard !nextText.isEmpty else {
             guard !displayedText.isEmpty else { return }
             displayedText = ""
-            displayedSegments = StreamingMarkdownBlockSplitter.split("")
             return
         }
         if nextText.hasPrefix(displayedText) {
@@ -374,7 +354,6 @@ private struct StreamingAssistantMarkdownTextView: View {
             guard displayedText != nextText else { return }
             displayedText = nextText
         }
-        displayedSegments = StreamingMarkdownBlockSplitter.split(displayedText)
     }
 }
 
