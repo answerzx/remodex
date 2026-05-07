@@ -30,10 +30,12 @@ struct TurnToolbarContent: ToolbarContent {
     let gitActionLoadingTitle: String?
     let showsDiscardRuntimeChangesAndSync: Bool
     let gitSyncState: String?
+    let canSelectGitFolder: Bool
     var onTapMacHandoff: (() -> Void)?
     var onTapWorktreeHandoff: (() -> Void)?
     var onTapNewChat: (() -> Void)?
     var onTapRepoDiff: (() -> Void)?
+    var onSelectGitFolder: (() -> Void)?
     let onGitAction: (TurnGitActionKind) -> Void
 
     @Binding var isShowingPathSheet: Bool
@@ -141,6 +143,8 @@ struct TurnToolbarContent: ToolbarContent {
                         loadingTitle: gitActionLoadingTitle,
                         showsDiscardRuntimeChangesAndSync: showsDiscardRuntimeChangesAndSync,
                         gitSyncState: gitSyncState,
+                        canSelectGitFolder: canSelectGitFolder,
+                        onSelectGitFolder: onSelectGitFolder,
                         onSelect: onGitAction
                     )
                 }

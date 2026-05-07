@@ -74,7 +74,6 @@ struct TurnView: View {
         // Keep the service-owned loading vs empty-state decision intact while
         // history hydration catches up for previously active conversations.
         let resolvedEmptyConversationState = resolvedEmptyState(for: threadDisplayPhase)
-        let showsGitControls = codex.isConnected && gitWorkingDirectory != nil
         let isWorktreeProject = resolvedThread.isManagedWorktreeProject
         let isComposerAutocompletePresented = viewModel.isFileAutocompleteVisible
             || viewModel.isSkillAutocompleteVisible
@@ -98,6 +97,8 @@ struct TurnView: View {
             && !viewModel.isRunningGitAction
             && !viewModel.isSwitchingGitBranch
             && !viewModel.isCreatingGitWorktree
+        let showsGitControls = codex.isConnected && gitWorkingDirectory != nil
+        let showsGitToolbar = codex.isConnected && (gitWorkingDirectory != nil || canSelectGitWorkingDirectory)
         let disabledGitActions: Set<TurnGitActionKind> = viewModel.disabledGitActions
         let onTapMacHandoff: (() -> Void)? = codex.isConnected && codex.supportsDesktopAppHandoff ? {
             isShowingMacHandoffConfirm = true
@@ -223,17 +224,21 @@ struct TurnView: View {
                 isCreatingGitWorktree: viewModel.isCreatingGitWorktree,
                 repoDiffTotals: viewModel.gitRepoSync?.repoDiffTotals,
                 isLoadingRepoDiff: isLoadingRepositoryDiff,
-                showsGitActions: showsGitControls,
+                showsGitActions: showsGitToolbar,
                 isGitActionEnabled: isGitActionEnabled,
                 disabledGitActions: disabledGitActions,
                 isRunningGitAction: viewModel.isRunningGitAction,
                 gitActionLoadingTitle: viewModel.gitActionLoadingTitle,
                 showsDiscardRuntimeChangesAndSync: viewModel.shouldShowDiscardRuntimeChangesAndSync,
                 gitSyncState: viewModel.gitSyncState,
+                canSelectGitFolder: canSelectGitWorkingDirectory,
                 onTapMacHandoff: onTapMacHandoff,
                 onTapWorktreeHandoff: onTapWorktreeHandoff,
                 onTapNewChat: onTapNewChat,
                 onTapRepoDiff: onTapRepoDiff,
+                onSelectGitFolder: {
+                    isShowingGitWorkingDirectoryPicker = true
+                },
                 onGitAction: { action in
                     handleGitActionSelection(
                         action,
@@ -416,6 +421,7 @@ struct TurnView: View {
                 title: "Select Git Folder",
                 useButtonTitle: "Use for Git",
                 newFolderPromptMessage: "Create this folder on your Mac and use it for Git actions.",
+                allowsNewFolderCreation: false,
                 initialPath: gitWorkingDirectory,
                 onSelectFolder: selectGitWorkingDirectory
             )

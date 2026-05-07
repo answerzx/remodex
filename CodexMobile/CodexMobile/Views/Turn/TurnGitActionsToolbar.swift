@@ -61,6 +61,8 @@ struct TurnGitActionsToolbarButton: View {
     let loadingTitle: String?
     let showsDiscardRuntimeChangesAndSync: Bool
     let gitSyncState: String?
+    let canSelectGitFolder: Bool
+    let onSelectGitFolder: (() -> Void)?
     let onSelect: (TurnGitActionKind) -> Void
 
     private let minToolbarButtonSize: CGFloat = 28
@@ -103,7 +105,18 @@ struct TurnGitActionsToolbarButton: View {
 
     var body: some View {
         Menu {
-            if gitSyncState == "not_initialized" {
+            if onSelectGitFolder != nil {
+                Section("Folder") {
+                    selectGitFolderButton
+                }
+            }
+
+            if gitSyncState == nil {
+                Section("Status") {
+                    Label("Select a local folder first", systemImage: "info.circle")
+                        .foregroundStyle(.secondary)
+                }
+            } else if gitSyncState == "not_initialized" {
                 Section("Setup") {
                     actionButton(for: .initialize)
                 }
@@ -127,7 +140,7 @@ struct TurnGitActionsToolbarButton: View {
                 }
             }
         } label: {
-            toolbarIcon(for: gitSyncState == "not_initialized" ? .initialize : .commit, size: 24)
+            toolbarLabelIcon(size: 24)
                 .overlay(alignment: .topTrailing) {
                     // Skip the dot while a git action runs; the in-app toast already shows live progress.
                     if !isRunningAction, let syncStatusColor {
@@ -150,11 +163,21 @@ struct TurnGitActionsToolbarButton: View {
         .contentShape(Circle())
         .adaptiveToolbarItem(in: Circle())
         .accessibilityLabel("Git actions")
-        .accessibilityValue(loadingTitle ?? syncStatusAccessibilityValue ?? "Repository status unavailable")
+        .accessibilityValue(loadingTitle ?? syncStatusAccessibilityValue ?? "Select a Git folder")
     }
 
     private var recoveryActions: [TurnGitActionKind] {
         showsDiscardRuntimeChangesAndSync ? [.discardRuntimeChangesAndSync] : []
+    }
+
+    private var selectGitFolderButton: some View {
+        Button {
+            HapticFeedback.shared.triggerImpactFeedback()
+            onSelectGitFolder?()
+        } label: {
+            Label("Select Git Folder...", systemImage: "folder")
+        }
+        .disabled(!canSelectGitFolder)
     }
 
     private func actionButton(for action: TurnGitActionKind) -> some View {
@@ -169,6 +192,19 @@ struct TurnGitActionsToolbarButton: View {
             }
         }
         .disabled(!isEnabled || disabledActions.contains(action))
+    }
+
+    @ViewBuilder
+    private func toolbarLabelIcon(size: CGFloat) -> some View {
+        if gitSyncState == nil {
+            Image(systemName: "folder")
+                .resizable()
+                .scaledToFit()
+                .foregroundStyle(.primary)
+                .frame(width: size, height: size)
+        } else {
+            toolbarIcon(for: gitSyncState == "not_initialized" ? .initialize : .commit, size: size)
+        }
     }
 
     @ViewBuilder

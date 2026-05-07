@@ -14,6 +14,7 @@ struct SidebarLocalFolderBrowserSheet: View {
     let title: String
     let useButtonTitle: String
     let newFolderPromptMessage: String
+    let allowsNewFolderCreation: Bool
     let initialPath: String?
     let onSelectFolder: (String) -> Void
 
@@ -45,12 +46,14 @@ struct SidebarLocalFolderBrowserSheet: View {
         title: String = "Add Local Folder",
         useButtonTitle: String = "Use",
         newFolderPromptMessage: String = "Create this folder on your Mac and start a chat there.",
+        allowsNewFolderCreation: Bool = true,
         initialPath: String? = nil,
         onSelectFolder: @escaping (String) -> Void
     ) {
         self.title = title
         self.useButtonTitle = useButtonTitle
         self.newFolderPromptMessage = newFolderPromptMessage
+        self.allowsNewFolderCreation = allowsNewFolderCreation
         self.initialPath = initialPath
         self.onSelectFolder = onSelectFolder
     }
@@ -86,10 +89,12 @@ struct SidebarLocalFolderBrowserSheet: View {
                 }
 
                 ToolbarItemGroup(placement: .primaryAction) {
-                    Button(action: presentNewFolderPrompt) {
-                        Image(systemName: "folder.badge.plus")
+                    if allowsNewFolderCreation {
+                        Button(action: presentNewFolderPrompt) {
+                            Image(systemName: "folder.badge.plus")
+                        }
+                        .disabled(currentPath == nil || isCreatingFolder)
                     }
-                    .disabled(currentPath == nil || isCreatingFolder)
 
                     Button(useButtonTitle, action: useCurrentFolder)
                         .disabled(currentPath == nil)

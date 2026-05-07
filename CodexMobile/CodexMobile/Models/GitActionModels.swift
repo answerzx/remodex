@@ -407,7 +407,7 @@ enum TurnGitActionKind: CaseIterable, Sendable {
 
     var title: String {
         switch self {
-        case .initialize: return "Initialize Git"
+        case .initialize: return "Initialize Selected Folder"
         case .syncNow: return "Update"
         case .commit: return "Commit"
         case .push: return "Push"
