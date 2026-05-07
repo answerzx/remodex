@@ -13,6 +13,7 @@ const {
   handleProjectRequest,
   handleProjectMethod,
   projectCreateDirectory,
+  projectDesktopState,
   projectListDirectory,
   projectSearchDirectories,
   projectValidatePath,
@@ -32,6 +33,48 @@ test("project/quickLocations only returns existing allowed folders", async () =>
     result.locations.map((location) => location.id),
     ["home", "developer"]
   );
+});
+
+test("project/desktopState returns Codex desktop project markers", async () => {
+  const codexHome = makeTempHome();
+  fs.writeFileSync(
+    path.join(codexHome, ".codex-global-state.json"),
+    JSON.stringify({
+      "projectless-thread-ids": ["thread-a", "thread-a", "", null],
+      "thread-workspace-root-hints": {
+        "thread-a": "/Users/me/Documents/Codex/generated",
+        "": "/ignored",
+        "thread-empty": "   ",
+      },
+      "electron-saved-workspace-roots": ["/Users/me/work/app"],
+      "project-order": ["/Users/me/work/app", "/Users/me/work/site"],
+      "active-workspace-roots": ["/Users/me/work/site"],
+    })
+  );
+
+  const result = await projectDesktopState({ codexHome });
+
+  assert.deepEqual(result.projectlessThreadIds, ["thread-a"]);
+  assert.deepEqual(result.threadWorkspaceRootHints, {
+    "thread-a": "/Users/me/Documents/Codex/generated",
+  });
+  assert.deepEqual(result.savedWorkspaceRoots, ["/Users/me/work/app"]);
+  assert.deepEqual(result.projectOrder, ["/Users/me/work/app", "/Users/me/work/site"]);
+  assert.deepEqual(result.activeWorkspaceRoots, ["/Users/me/work/site"]);
+});
+
+test("project/desktopState tolerates missing Codex desktop state", async () => {
+  const codexHome = makeTempHome();
+
+  const result = await projectDesktopState({ codexHome });
+
+  assert.deepEqual(result, {
+    projectlessThreadIds: [],
+    threadWorkspaceRootHints: {},
+    savedWorkspaceRoots: [],
+    projectOrder: [],
+    activeWorkspaceRoots: [],
+  });
 });
 
 test("project/listDirectory returns sorted child folders and skips files or hidden folders by default", async () => {

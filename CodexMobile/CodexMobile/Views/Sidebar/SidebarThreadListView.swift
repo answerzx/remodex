@@ -91,6 +91,8 @@ struct SidebarThreadListView: View {
         switch group.kind {
         case .pinned:
             pinnedGroupSection(group)
+        case .conversations:
+            conversationsGroupSection(group)
         case .project:
             projectGroupSection(group)
 
@@ -147,6 +149,21 @@ struct SidebarThreadListView: View {
                 .transition(.opacity)
             }
         }
+    }
+
+    private func conversationsGroupSection(_ group: SidebarThreadGroup) -> some View {
+        let hierarchy = SidebarSubagentHierarchy(groupThreads: group.threads)
+
+        return VStack(spacing: 2) {
+            ForEach(hierarchy.rootThreads) { thread in
+                threadRowTree(
+                    thread,
+                    childrenByParentID: hierarchy.childrenByParentID
+                )
+            }
+        }
+        .padding(.top, 6)
+        .padding(.bottom, 14)
     }
 
     private func projectGroupSection(_ group: SidebarThreadGroup) -> some View {
@@ -414,6 +431,16 @@ struct SidebarThreadListView: View {
             switch group.kind {
             case .pinned:
                 guard isPinnedExpanded else { continue }
+                let hierarchy = SidebarSubagentHierarchy(groupThreads: group.threads)
+                for rootThread in hierarchy.rootThreads {
+                    collectVisibleSubagentThreadIDs(
+                        from: rootThread,
+                        childrenByParentID: hierarchy.childrenByParentID,
+                        ancestorThreadIDs: [],
+                        into: &visibleThreadIDs
+                    )
+                }
+            case .conversations:
                 let hierarchy = SidebarSubagentHierarchy(groupThreads: group.threads)
                 for rootThread in hierarchy.rootThreads {
                     collectVisibleSubagentThreadIDs(

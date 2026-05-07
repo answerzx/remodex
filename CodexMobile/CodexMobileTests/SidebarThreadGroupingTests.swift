@@ -25,7 +25,7 @@ final class SidebarThreadGroupingTests: XCTestCase {
         XCTAssertEqual(groups.last?.threads.map(\.id), ["thread-c"])
     }
 
-    func testMakeGroupsCreatesNoProjectBucketForThreadsWithoutCwd() {
+    func testMakeGroupsCreatesPlainConversationSectionForThreadsWithoutCwd() {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
         let threads = [
             makeThread(id: "thread-a", updatedAt: now, cwd: nil),
@@ -35,13 +35,14 @@ final class SidebarThreadGroupingTests: XCTestCase {
         let groups = SidebarThreadGrouping.makeGroups(from: threads, now: now)
 
         XCTAssertEqual(groups.count, 1)
-        XCTAssertEqual(groups[0].id, "project:__no_project__")
-        XCTAssertEqual(groups[0].label, "No Project")
+        XCTAssertEqual(groups[0].id, "conversations")
+        XCTAssertEqual(groups[0].kind, .conversations)
+        XCTAssertEqual(groups[0].label, "Conversations")
         XCTAssertNil(groups[0].projectPath)
         XCTAssertEqual(groups[0].threads.map(\.id), ["thread-a", "thread-b"])
     }
 
-    func testMakeGroupsTreatsPseudoProjectBucketsAsNoProject() {
+    func testMakeGroupsTreatsPseudoProjectBucketsAsPlainConversations() {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
         let threads = [
             makeThread(id: "thread-a", updatedAt: now, cwd: "server"),
@@ -51,8 +52,9 @@ final class SidebarThreadGroupingTests: XCTestCase {
         let groups = SidebarThreadGrouping.makeGroups(from: threads, now: now)
 
         XCTAssertEqual(groups.count, 1)
-        XCTAssertEqual(groups[0].id, "project:__no_project__")
-        XCTAssertEqual(groups[0].label, "No Project")
+        XCTAssertEqual(groups[0].id, "conversations")
+        XCTAssertEqual(groups[0].kind, .conversations)
+        XCTAssertEqual(groups[0].label, "Conversations")
         XCTAssertNil(groups[0].projectPath)
         XCTAssertEqual(groups[0].threads.map(\.id), ["thread-a", "thread-b"])
     }
@@ -166,6 +168,47 @@ final class SidebarThreadGroupingTests: XCTestCase {
         XCTAssertEqual(worktreeGroup.iconSystemName, "arrow.triangle.branch")
     }
 
+    func testDesktopProjectStateKeepsProjectlessCwdThreadsAsPlainConversations() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let state = makeDesktopProjectState(
+            projectlessThreadIDs: ["plain-thread"],
+            threadWorkspaceRootHints: ["plain-thread": "/Users/me/Documents/Codex/generated"],
+            savedWorkspaceRoots: ["/Users/me/work/site"]
+        )
+        let threads = [
+            makeThread(id: "plain-thread", updatedAt: now, cwd: "/Users/me/work/app"),
+            makeThread(id: "project-thread", updatedAt: now.addingTimeInterval(-60), cwd: "/Users/me/work/site"),
+        ]
+
+        let groups = SidebarThreadGrouping.makeGroups(
+            from: threads,
+            desktopProjectState: state,
+            now: now
+        )
+
+        XCTAssertEqual(groups.map(\.id), ["conversations", "project:/Users/me/work/site"])
+        XCTAssertEqual(groups[0].kind, .conversations)
+        XCTAssertEqual(groups[0].threads.map(\.id), ["plain-thread"])
+        let projectGroup = try XCTUnwrap(groups.first { $0.kind == .project })
+        XCTAssertEqual(projectGroup.threads.map(\.id), ["project-thread"])
+    }
+
+    func testDesktopProjectStateProjectChoicesExcludeProjectlessCwdThreads() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let state = makeDesktopProjectState(
+            projectlessThreadIDs: ["plain-thread"],
+            savedWorkspaceRoots: ["/Users/me/work/site"]
+        )
+        let threads = [
+            makeThread(id: "plain-thread", updatedAt: now, cwd: "/Users/me/work/app"),
+            makeThread(id: "project-thread", updatedAt: now.addingTimeInterval(-60), cwd: "/Users/me/work/site"),
+        ]
+
+        let choices = SidebarThreadGrouping.makeProjectChoices(from: threads, desktopProjectState: state)
+
+        XCTAssertEqual(choices.map(\.projectPath), ["/Users/me/work/site"])
+    }
+
     func testMakeProjectChoicesReusesLiveProjectBucketsAndSkipsNoProject() {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
         let threads = [
@@ -228,25 +271,32 @@ final class SidebarThreadGroupingTests: XCTestCase {
         XCTAssertEqual(threadIDs, ["app-thread-1", "app-thread-2"])
     }
 
-    func testLiveThreadIDsForProjectGroupKeepsNoProjectChatsTogether() {
+    func testLiveThreadIDsForProjectGroupExcludesDesktopProjectlessThreadsWithSameCwd() {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let state = makeDesktopProjectState(
+            projectlessThreadIDs: ["plain-thread"],
+            savedWorkspaceRoots: ["/Users/me/work/app"]
+        )
         let allThreads = [
-            makeThread(id: "no-project-1", updatedAt: now, cwd: nil),
-            makeThread(id: "no-project-2", updatedAt: now.addingTimeInterval(-30), cwd: " "),
-            makeThread(id: "project-thread", updatedAt: now.addingTimeInterval(-60), cwd: "/Users/me/work/app"),
+            makeThread(id: "plain-thread", updatedAt: now, cwd: "/Users/me/work/app"),
+            makeThread(id: "project-thread", updatedAt: now.addingTimeInterval(-30), cwd: "/Users/me/work/app"),
         ]
-        let noProjectGroup = SidebarThreadGroup(
-            id: "project:__no_project__",
-            label: "No Project",
+        let projectGroup = SidebarThreadGroup(
+            id: "project:/Users/me/work/app",
+            label: "app",
             kind: .project,
             sortDate: now,
-            projectPath: nil,
-            threads: [allThreads[0]]
+            projectPath: "/Users/me/work/app",
+            threads: [allThreads[1]]
         )
 
-        let threadIDs = SidebarThreadGrouping.liveThreadIDsForProjectGroup(noProjectGroup, in: allThreads)
+        let threadIDs = SidebarThreadGrouping.liveThreadIDsForProjectGroup(
+            projectGroup,
+            in: allThreads,
+            desktopProjectState: state
+        )
 
-        XCTAssertEqual(threadIDs, ["no-project-1", "no-project-2"])
+        XCTAssertEqual(threadIDs, ["project-thread"])
     }
 
     func testProjectExpansionStateInitiallyExpandsAllVisibleGroups() {
@@ -539,6 +589,22 @@ final class SidebarThreadGroupingTests: XCTestCase {
             sortDate: .distantPast,
             projectPath: id.replacingOccurrences(of: "project:", with: ""),
             threads: []
+        )
+    }
+
+    private func makeDesktopProjectState(
+        projectlessThreadIDs: Set<String> = [],
+        threadWorkspaceRootHints: [String: String] = [:],
+        savedWorkspaceRoots: Set<String> = [],
+        projectOrder: [String] = [],
+        activeWorkspaceRoots: Set<String> = []
+    ) -> CodexDesktopProjectState {
+        CodexDesktopProjectState(
+            projectlessThreadIDs: projectlessThreadIDs,
+            threadWorkspaceRootHints: threadWorkspaceRootHints,
+            savedWorkspaceRoots: savedWorkspaceRoots,
+            projectOrder: projectOrder,
+            activeWorkspaceRoots: activeWorkspaceRoots
         )
     }
 }

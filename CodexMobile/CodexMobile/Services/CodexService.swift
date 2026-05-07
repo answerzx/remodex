@@ -349,6 +349,7 @@ final class CodexService {
             refreshPinnedThreadSnapshots()
         }
     }
+    var desktopProjectState: CodexDesktopProjectState?
     var isConnected = false
     var isConnecting = false
     var isInitialized = false

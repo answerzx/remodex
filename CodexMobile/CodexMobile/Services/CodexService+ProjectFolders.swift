@@ -1,7 +1,7 @@
 // FILE: CodexService+ProjectFolders.swift
-// Purpose: Mac-local project folder browsing RPCs used by the sidebar new-chat flow.
+// Purpose: Mac-local project folder browsing and desktop project state RPCs used by the sidebar.
 // Layer: Service Extension
-// Exports: CodexProjectLocation, CodexProjectDirectoryEntry, CodexProjectDirectoryListing, CodexService project folder APIs
+// Exports: CodexProjectLocation, CodexProjectDirectoryEntry, CodexProjectDirectoryListing, CodexDesktopProjectState, CodexService project APIs
 // Depends on: Foundation, JSONValue, RPC transport
 
 import Foundation
@@ -23,6 +23,39 @@ struct CodexProjectDirectoryListing: Equatable, Sendable {
     let path: String
     let parentPath: String?
     let entries: [CodexProjectDirectoryEntry]
+}
+
+struct CodexDesktopProjectState: Equatable, Hashable, Sendable {
+    let projectlessThreadIDs: Set<String>
+    let threadWorkspaceRootHints: [String: String]
+    let savedWorkspaceRoots: Set<String>
+    let projectOrder: [String]
+    let activeWorkspaceRoots: Set<String>
+
+    var hasDesktopProjectMarkers: Bool {
+        !projectlessThreadIDs.isEmpty
+            || !threadWorkspaceRootHints.isEmpty
+            || !savedWorkspaceRoots.isEmpty
+            || !projectOrder.isEmpty
+            || !activeWorkspaceRoots.isEmpty
+    }
+
+    var explicitProjectRoots: Set<String> {
+        savedWorkspaceRoots
+            .union(projectOrder)
+            .union(activeWorkspaceRoots)
+    }
+
+    func marksThreadAsProjectless(_ threadID: String) -> Bool {
+        projectlessThreadIDs.contains(threadID) || threadWorkspaceRootHints[threadID] != nil
+    }
+
+    func containsExplicitProjectRoot(_ projectPath: String?) -> Bool {
+        guard let normalizedProjectPath = CodexThread.normalizedFilesystemProjectPath(projectPath) else {
+            return false
+        }
+        return explicitProjectRoots.contains(normalizedProjectPath)
+    }
 }
 
 extension CodexService {
@@ -90,6 +123,26 @@ extension CodexService {
 
         return path
     }
+
+    func fetchDesktopProjectState() async throws -> CodexDesktopProjectState {
+        let response = try await sendRequest(
+            method: "project/desktopState",
+            params: .object([:]),
+            timeoutNanoseconds: 2_000_000_000,
+            timeoutMessage: "project/desktopState timed out while syncing desktop sidebar state."
+        )
+        guard let object = response.result?.objectValue else {
+            throw CodexServiceError.invalidResponse("project/desktopState response missing payload")
+        }
+
+        return CodexDesktopProjectState(
+            projectlessThreadIDs: Set(Self.decodeStringArray(object["projectlessThreadIds"])),
+            threadWorkspaceRootHints: Self.decodeStringMap(object["threadWorkspaceRootHints"]),
+            savedWorkspaceRoots: Set(Self.decodeProjectPathArray(object["savedWorkspaceRoots"])),
+            projectOrder: Self.decodeProjectPathArray(object["projectOrder"]),
+            activeWorkspaceRoots: Set(Self.decodeProjectPathArray(object["activeWorkspaceRoots"]))
+        )
+    }
 }
 
 private extension CodexService {
@@ -116,5 +169,39 @@ private extension CodexService {
             path: path,
             isSymlink: object["isSymlink"]?.boolValue ?? false
         )
+    }
+
+    static func decodeStringArray(_ value: JSONValue?) -> [String] {
+        guard let values = value?.arrayValue else {
+            return []
+        }
+
+        return values.compactMap { rawValue in
+            guard let string = rawValue.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !string.isEmpty else {
+                return nil
+            }
+            return string
+        }
+    }
+
+    static func decodeProjectPathArray(_ value: JSONValue?) -> [String] {
+        decodeStringArray(value).compactMap(CodexThread.normalizedFilesystemProjectPath)
+    }
+
+    static func decodeStringMap(_ value: JSONValue?) -> [String: String] {
+        guard let object = value?.objectValue else {
+            return [:]
+        }
+
+        return object.reduce(into: [String: String]()) { partialResult, entry in
+            let key = entry.key.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !key.isEmpty,
+                  let value = entry.value.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !value.isEmpty else {
+                return
+            }
+            partialResult[key] = value
+        }
     }
 }

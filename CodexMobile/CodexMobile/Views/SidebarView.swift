@@ -158,6 +158,10 @@ struct SidebarView: View {
             debugSidebarLog("pinned threads changed count=\(codex.pinnedThreadIDs.count)")
             rebuildGroupedThreads()
         }
+        .onChange(of: codex.desktopProjectState) { _, _ in
+            debugSidebarLog("desktop project state changed")
+            rebuildGroupedThreads()
+        }
         .onChange(of: diffFingerprint) { _, _ in
             debugSidebarLog("diff fingerprint changed visible=\(isVisible)")
             rebuildCachedDiffTotals()
@@ -358,7 +362,11 @@ struct SidebarView: View {
     private func archivePendingProjectGroup() {
         guard let group = projectGroupPendingArchive else { return }
 
-        let threadIDs = SidebarThreadGrouping.liveThreadIDsForProjectGroup(group, in: codex.threads)
+        let threadIDs = SidebarThreadGrouping.liveThreadIDsForProjectGroup(
+            group,
+            in: codex.threads,
+            desktopProjectState: codex.desktopProjectState
+        )
         let selectedThreadWasArchived = selectedThread.map { selected in
             threadIDs.contains(selected.id)
         } ?? false
@@ -378,7 +386,11 @@ struct SidebarView: View {
     private func deletePendingProjectGroupLocally() {
         guard let group = projectGroupPendingDeletion else { return }
 
-        let threadIDs = SidebarThreadGrouping.allThreadIDsForProjectGroup(group, in: codex.threads)
+        let threadIDs = SidebarThreadGrouping.allThreadIDsForProjectGroup(
+            group,
+            in: codex.threads,
+            desktopProjectState: codex.desktopProjectState
+        )
         let selectedThreadWasDeleted = selectedThread.map { selected in
             threadIDs.contains(selected.id)
         } ?? false
@@ -412,7 +424,11 @@ struct SidebarView: View {
         let fingerprint = groupingFingerprint(query: query, source: source)
         guard fingerprint != lastGroupedThreadsFingerprint else { return }
         lastGroupedThreadsFingerprint = fingerprint
-        groupedThreads = SidebarThreadGrouping.makeGroups(from: source, pinnedThreadIDs: codex.pinnedThreadIDs)
+        groupedThreads = SidebarThreadGrouping.makeGroups(
+            from: source,
+            pinnedThreadIDs: codex.pinnedThreadIDs,
+            desktopProjectState: codex.desktopProjectState
+        )
         debugSidebarLog(
             "rebuildGroupedThreads durationMs=\(Int(Date().timeIntervalSince(startedAt) * 1000)) "
                 + "queryLength=\(query.count) sourceCount=\(source.count) groupCount=\(groupedThreads.count)"
@@ -423,6 +439,7 @@ struct SidebarView: View {
         var hasher = Hasher()
         hasher.combine(query)
         hasher.combine(codex.pinnedThreadIDs)
+        hasher.combine(codex.desktopProjectState)
         for thread in source {
             hasher.combine(thread)
         }
@@ -519,7 +536,10 @@ struct SidebarView: View {
 
     // Keeps the chooser in sync with the same project buckets shown in the sidebar.
     private var newChatProjectChoices: [SidebarProjectChoice] {
-        SidebarThreadGrouping.makeProjectChoices(from: codex.threads)
+        SidebarThreadGrouping.makeProjectChoices(
+            from: codex.threads,
+            desktopProjectState: codex.desktopProjectState
+        )
     }
 
     private var canCreateThread: Bool {

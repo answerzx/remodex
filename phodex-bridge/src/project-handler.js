@@ -2,11 +2,12 @@
 // Purpose: Serves safe Mac-local project folder discovery and creation requests from the iOS app.
 // Layer: Bridge handler
 // Exports: handleProjectRequest plus testable project filesystem helpers
-// Depends on: fs, os, path
+// Depends on: fs, os, path, ./codex-home
 
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+const { resolveCodexHome } = require("./codex-home");
 
 const DEFAULT_DIRECTORY_LIMIT = 200;
 const DEFAULT_DIRECTORY_SEARCH_LIMIT = 80;
@@ -58,6 +59,8 @@ async function handleProjectMethod(method, params, options = {}) {
   switch (method) {
     case "project/quickLocations":
       return projectQuickLocations(options);
+    case "project/desktopState":
+      return projectDesktopState(options);
     case "project/listDirectory":
       return projectListDirectory(params, options);
     case "project/searchDirectories":
@@ -97,6 +100,34 @@ async function projectQuickLocations(options = {}) {
   }
 
   return { locations };
+}
+
+async function projectDesktopState(options = {}) {
+  const statePath = resolveCodexGlobalStatePath(options);
+  let rawState;
+  try {
+    rawState = await fs.promises.readFile(statePath, "utf8");
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return emptyDesktopProjectState();
+    }
+    throw projectError("desktop_state_read_failed", error?.message || "Unable to read Codex project state.");
+  }
+
+  let state;
+  try {
+    state = JSON.parse(rawState);
+  } catch {
+    throw projectError("desktop_state_invalid", "Codex project state is not valid JSON.");
+  }
+
+  return {
+    projectlessThreadIds: normalizeStringArray(state["projectless-thread-ids"]),
+    threadWorkspaceRootHints: normalizeStringMap(state["thread-workspace-root-hints"]),
+    savedWorkspaceRoots: normalizePathArray(state["electron-saved-workspace-roots"]),
+    projectOrder: normalizePathArray(state["project-order"]),
+    activeWorkspaceRoots: normalizePathArray(state["active-workspace-roots"]),
+  };
 }
 
 async function projectListDirectory(params, options = {}) {
@@ -462,6 +493,49 @@ function resolveHomeDir(options = {}) {
   return options.homeDir || os.homedir();
 }
 
+function resolveCodexGlobalStatePath(options = {}) {
+  return options.globalStatePath || path.join(options.codexHome || resolveCodexHome(), ".codex-global-state.json");
+}
+
+function emptyDesktopProjectState() {
+  return {
+    projectlessThreadIds: [],
+    threadWorkspaceRootHints: {},
+    savedWorkspaceRoots: [],
+    projectOrder: [],
+    activeWorkspaceRoots: [],
+  };
+}
+
+function normalizeStringArray(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return [...new Set(value.map(readString).filter(Boolean))];
+}
+
+function normalizeStringMap(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+
+  const normalized = {};
+  for (const [key, mapValue] of Object.entries(value)) {
+    const normalizedKey = readString(key);
+    const normalizedValue = readString(mapValue);
+    if (!normalizedKey || !normalizedValue) {
+      continue;
+    }
+    normalized[normalizedKey] = normalizedValue;
+  }
+  return normalized;
+}
+
+function normalizePathArray(value) {
+  return normalizeStringArray(value);
+}
+
 function realpathSyncIfAvailable(candidatePath) {
   try {
     return fs.realpathSync(candidatePath);
@@ -489,5 +563,6 @@ module.exports = {
   projectSearchDirectories,
   projectValidatePath,
   projectCreateDirectory,
+  projectDesktopState,
   validateDirectory,
 };

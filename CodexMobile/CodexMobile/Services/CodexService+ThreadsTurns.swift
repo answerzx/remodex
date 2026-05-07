@@ -64,6 +64,7 @@ extension CodexService {
         // Sidebar metadata must be complete: capping thread/list hides older project chats.
         async let activeThreadsFetch = fetchServerThreads(limit: limit)
         async let archivedThreadsFetch = fetchServerThreads(limit: limit, archived: true)
+        async let desktopProjectStateFetch = fetchDesktopProjectState()
 
         let activeThreads = try await activeThreadsFetch
         let archivedThreads: [CodexThread]
@@ -72,6 +73,9 @@ extension CodexService {
         } catch {
             debugSyncLog("thread/list archived fetch failed (non-fatal): \(error.localizedDescription)")
             archivedThreads = []
+        }
+        if let desktopProjectState = try? await desktopProjectStateFetch {
+            self.desktopProjectState = desktopProjectState
         }
 
         reconcileLocalThreadsWithServer(activeThreads, serverArchivedThreads: archivedThreads)
