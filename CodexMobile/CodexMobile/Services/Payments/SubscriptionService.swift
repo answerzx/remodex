@@ -71,7 +71,7 @@ final class SubscriptionService {
     private static let cachedStateDefaultsKey = "codex.subscription.cachedState"
     private static let freeSendCountDefaultsKey = "codex.subscription.freeSendCount"
     private static let freeSendLimit = 5
-    private static let forceLocalTestingProAccess = true
+    static let forceLocalTestingProAccess = true
 
     private let defaults: UserDefaults
     @ObservationIgnored private var customerInfoUpdatesTask: Task<Void, Never>?
