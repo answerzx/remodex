@@ -1148,7 +1148,7 @@ struct MessageRow: View, Equatable {
     @State private var pendingAssistantDisplayText: String?
     @State private var assistantDisplayUpdateTask: Task<Void, Never>?
 
-    private static let assistantDisplayUpdateIntervalNanoseconds: UInt64 = 33_000_000
+    private static let assistantDisplayUpdateIntervalNanoseconds: UInt64 = 50_000_000
 
     static func == (lhs: MessageRow, rhs: MessageRow) -> Bool {
         lhs.message == rhs.message

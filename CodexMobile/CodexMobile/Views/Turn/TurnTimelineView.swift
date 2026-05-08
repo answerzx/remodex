@@ -560,6 +560,10 @@ struct TurnTimelineView<EmptyState: View, Composer: View>: View {
             && visibleTailCount < min(messages.count, Self.initialVisibleTailCount)
     }
 
+    private var isStreamingTimelineActive: Bool {
+        cachedNewestStreamingMessageID != nil || visibleMessages.contains(where: \.isStreaming)
+    }
+
     private var shouldShowFullTimelineLoader: Bool {
         shouldWarmRecentTailProgressively && visibleTailCount == 0
     }
@@ -1261,6 +1265,13 @@ struct TurnTimelineView<EmptyState: View, Composer: View>: View {
             return
         }
 
+        if !nextValue,
+           isStreamingTimelineActive,
+           autoScrollMode == .followBottom,
+           !shouldPauseAutomaticScrolling {
+            return
+        }
+
         if nextValue {
             isScrolledToBottom = true
             if autoScrollMode != .anchorAssistantResponse {
@@ -1694,11 +1705,13 @@ struct TurnTimelineView<EmptyState: View, Composer: View>: View {
             performInitialRecoverySnapIfNeeded(using: proxy)
             if viewportHeightChanged,
                shouldPinTimelineToBottomDuringGeometryChange,
+               !isStreamingTimelineActive,
                !isSuppressingBottomCorrectionsForWarmup {
                 scheduleFollowBottomScroll(using: proxy)
             }
         }
         if !isSuppressingBottomCorrectionsForWarmup,
+           !isStreamingTimelineActive,
            TurnScrollStateTracker.shouldCorrectBottomAfterContentHeightChange(
             previousHeight: old.contentHeight,
             newHeight: new.contentHeight,
