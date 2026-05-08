@@ -278,7 +278,7 @@ private struct TurnTimelineRowsSection: View {
     let onLoadEarlierMessages: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
+        LazyVStack(alignment: .leading, spacing: 20) {
             if shouldWarmRecentTailProgressively {
                 HStack(spacing: 8) {
                     ProgressView()
