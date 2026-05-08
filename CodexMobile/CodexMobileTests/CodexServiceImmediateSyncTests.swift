@@ -131,6 +131,21 @@ final class CodexServiceImmediateSyncTests: XCTestCase {
         XCTAssertEqual(readThreadIDs, ["thread-c"])
     }
 
+    func testFindMessageIndexToleratesDuplicateMessageIDs() {
+        let service = makeService()
+        let threadID = "thread-duplicate-index"
+        let duplicateID = "assistant:turn-1:item:item-207"
+
+        service.messagesByThread[threadID] = [
+            CodexMessage(id: "user-1", threadId: threadID, role: .user, text: "Hello", orderIndex: 0),
+            CodexMessage(id: duplicateID, threadId: threadID, role: .assistant, text: "partial", orderIndex: 1),
+            CodexMessage(id: duplicateID, threadId: threadID, role: .assistant, text: "final", orderIndex: 2),
+        ]
+
+        XCTAssertEqual(service.findMessageIndex(threadId: threadID, messageId: duplicateID), 2)
+        XCTAssertEqual(service.messageIndexCacheByThread[threadID]?[duplicateID], 2)
+    }
+
     private func makeService() -> CodexService {
         let suiteName = "CodexServiceImmediateSyncTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName) ?? .standard
