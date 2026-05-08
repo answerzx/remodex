@@ -517,6 +517,9 @@ struct TurnTimelineView<EmptyState: View, Composer: View>: View {
     private var visibleRenderItems: [TurnTimelineRenderItem] {
         let signature = renderItemsCacheSignature(for: visibleMessages)
         if signature == cachedRenderItemsSignature {
+            if isUserBrowsingStreamingHistory {
+                return cachedRenderItems
+            }
             return Self.refreshedRenderItems(cachedRenderItems, with: visibleMessages)
         }
         return TurnTimelineRenderProjection.project(
@@ -759,6 +762,12 @@ struct TurnTimelineView<EmptyState: View, Composer: View>: View {
                         )
                     } action: { old, new in
                         guard !isEarlierHistoryInteractionActive else { return }
+                        if isStreamingTimelineActive,
+                           shouldPauseAutomaticScrolling,
+                           !new.isAtBottom,
+                           !isScrolledToBottom {
+                            return
+                        }
                         // Coalesce into a single commit per runloop turn so SwiftUI
                         // sees at most one @State mutation instead of several per frame.
                         scrollGeometryCoalescer.pending = (old, new)

@@ -1153,7 +1153,11 @@ struct MessageRow: View, Equatable {
     private static let assistantDisplayUpdateIntervalNanoseconds: UInt64 = 33_000_000
 
     static func == (lhs: MessageRow, rhs: MessageRow) -> Bool {
-        lhs.message == rhs.message
+        Self.messagesAreEquivalentForRendering(
+            lhs.message,
+            rhs.message,
+            freezesStreamingDisplay: lhs.freezesStreamingDisplay && rhs.freezesStreamingDisplay
+        )
             && lhs.isRetryAvailable == rhs.isRetryAvailable
             && lhs.assistantBlockAccessoryState == rhs.assistantBlockAccessoryState
             && lhs.planSessionSource == rhs.planSessionSource
@@ -1166,6 +1170,22 @@ struct MessageRow: View, Equatable {
             && (lhs.inlineCommitAndPushAction != nil) == (rhs.inlineCommitAndPushAction != nil)
             && lhs.inlineCommitAndPushPhase == rhs.inlineCommitAndPushPhase
             && (lhs.gitWorkingDirectorySelectionAction != nil) == (rhs.gitWorkingDirectorySelectionAction != nil)
+    }
+
+    private static func messagesAreEquivalentForRendering(
+        _ lhs: CodexMessage,
+        _ rhs: CodexMessage,
+        freezesStreamingDisplay: Bool
+    ) -> Bool {
+        if freezesStreamingDisplay,
+           lhs.id == rhs.id,
+           lhs.role == .assistant,
+           rhs.role == .assistant,
+           lhs.isStreaming,
+           rhs.isStreaming {
+            return lhs.renderingIdentityIgnoringText == rhs.renderingIdentityIgnoringText
+        }
+        return lhs == rhs
     }
 
     // Computed once per body evaluation and reused by all sub-views.
@@ -2815,8 +2835,6 @@ struct TypingIndicator: View {
     private let trackWidth: CGFloat = 26
     private let trackHeight: CGFloat = 6
     private let highlightWidth: CGFloat = 16
-    private let duration: TimeInterval = 1.0
-    @State private var shimmerOffset: CGFloat = -21
 
     var body: some View {
         Capsule(style: .continuous)
@@ -2836,17 +2854,56 @@ struct TypingIndicator: View {
                         )
                     )
                     .frame(width: highlightWidth, height: trackHeight)
-                    .offset(x: shimmerOffset)
             }
             .clipShape(Capsule(style: .continuous))
-        .onAppear {
-            guard shimmerOffset < 0 else { return }
-            withAnimation(.linear(duration: duration).repeatForever(autoreverses: false)) {
-                shimmerOffset = 21
-            }
-        }
         .accessibilityHidden(true)
     }
+}
+
+private extension CodexMessage {
+    var renderingIdentityIgnoringText: StreamingMessageRenderingIdentity {
+        StreamingMessageRenderingIdentity(
+            id: id,
+            threadId: threadId,
+            turnId: turnId,
+            itemId: itemId,
+            role: role,
+            kind: kind,
+            isStreaming: isStreaming,
+            assistantPhase: assistantPhase,
+            orderIndex: orderIndex,
+            deliveryState: deliveryState,
+            planState: planState,
+            planPresentation: planPresentation,
+            proposedPlan: proposedPlan,
+            resolvedPlanPresentation: resolvedPlanPresentation,
+            structuredUserInputRequest: structuredUserInputRequest,
+            subagentAction: subagentAction,
+            attachments: attachments,
+            fileMentions: fileMentions
+        )
+    }
+}
+
+private struct StreamingMessageRenderingIdentity: Equatable {
+    let id: String
+    let threadId: String
+    let turnId: String?
+    let itemId: String?
+    let role: CodexMessageRole
+    let kind: CodexMessageKind
+    let isStreaming: Bool
+    let assistantPhase: String?
+    let orderIndex: Int
+    let deliveryState: CodexMessageDeliveryState
+    let planState: CodexPlanState?
+    let planPresentation: CodexPlanPresentation?
+    let proposedPlan: CodexProposedPlan?
+    let resolvedPlanPresentation: CodexPlanPresentation?
+    let structuredUserInputRequest: CodexStructuredUserInputRequest?
+    let subagentAction: CodexSubagentAction?
+    let attachments: [CodexImageAttachment]
+    let fileMentions: [String]
 }
 
 // ─── Approval banner ────────────────────────────────────────────────
