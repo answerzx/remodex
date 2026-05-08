@@ -483,6 +483,9 @@ final class CodexService {
     @ObservationIgnored var pendingAssistantDeltaStreamOrder: [String] = []
     @ObservationIgnored var pendingAssistantDeltaFlushTask: Task<Void, Never>?
     let assistantDeltaBatchIntervalNanoseconds: UInt64 = 80_000_000
+    // Lets the timeline keep gesture handling smooth while the user reads older content during a live stream.
+    @ObservationIgnored var streamingTimelineBrowseThreadIDs: Set<String> = []
+    @ObservationIgnored var streamingTimelineSuppressedSnapshotThreadIDs: Set<String> = []
     // Coalesces multiple invalidateAssistantRevertStates() calls within the same run loop tick into one refresh.
     var coalescedRevertRefreshTask: Task<Void, Never>?
     // Dedupes completion payloads when servers omit turn/item identifiers.

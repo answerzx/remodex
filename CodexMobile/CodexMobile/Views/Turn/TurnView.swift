@@ -193,6 +193,9 @@ struct TurnView: View {
                         _ = try? await codex.loadThreadHistoryIfNeeded(threadId: thread.id, forceRefresh: true)
                     }
                 },
+                onStreamingHistoryBrowseStateChanged: { isBrowsing in
+                    codex.setTimelineStreamingHistoryBrowsing(threadId: thread.id, isBrowsing: isBrowsing)
+                },
                 onTapOutsideComposer: {
                     guard isInputFocused else { return }
                     isInputFocused = false

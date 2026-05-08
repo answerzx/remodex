@@ -168,6 +168,8 @@ extension CodexService {
         latestAssistantMessageIDByThread.removeValue(forKey: threadId)
         latestRepoAffectingMessageSignalByThread.removeValue(forKey: threadId)
         assistantRevertStateCacheByThread.removeValue(forKey: threadId)
+        streamingTimelineBrowseThreadIDs.remove(threadId)
+        streamingTimelineSuppressedSnapshotThreadIDs.remove(threadId)
         cancelPendingStreamingDeltaFlushes(for: threadId)
         threadsPendingCompletionHaptic.remove(threadId)
         threadsNeedingCanonicalHistoryReconcile.remove(threadId)
@@ -196,6 +198,8 @@ extension CodexService {
         latestAssistantMessageIDByThread.removeAll()
         latestRepoAffectingMessageSignalByThread.removeAll()
         assistantRevertStateCacheByThread.removeAll()
+        streamingTimelineBrowseThreadIDs.removeAll()
+        streamingTimelineSuppressedSnapshotThreadIDs.removeAll()
         cancelAllPendingStreamingDeltaFlushes()
         threadsNeedingCanonicalHistoryReconcile.removeAll()
         threadsWithSatisfiedDeferredHistoryHydration.removeAll()
@@ -277,6 +281,11 @@ extension CodexService {
             return
         }
 
+        if shouldSuppressStreamingTimelineSnapshotUpdate(threadId: threadId, message: updatedMessage) {
+            streamingTimelineSuppressedSnapshotThreadIDs.insert(threadId)
+            return
+        }
+
         let revision = messageRevisionByThread[threadId] ?? 0
         var projectedMessages = state.renderSnapshot.messages
         projectedMessages[projectedIndex] = updatedMessage
@@ -331,9 +340,15 @@ extension CodexService {
             return
         }
 
+        let updatedMessage = rawMessages[updatedMessageIndex]
+        if shouldSuppressStreamingTimelineSnapshotUpdate(threadId: threadId, message: updatedMessage) {
+            streamingTimelineSuppressedSnapshotThreadIDs.insert(threadId)
+            return
+        }
+
         let revision = messageRevisionByThread[threadId] ?? 0
         var projectedMessages = state.renderSnapshot.messages
-        projectedMessages[projectedIndex] = rawMessages[updatedMessageIndex]
+        projectedMessages[projectedIndex] = updatedMessage
 
         state.messages = rawMessages
         state.messageRevision = revision
@@ -4280,6 +4295,27 @@ extension CodexService {
     // Bumps a thread-local revision whenever its message timeline changes.
     func noteMessagesChanged(for threadId: String) {
         messageRevisionByThread[threadId, default: 0] &+= 1
+    }
+
+    // While the user scrolls older history, live token deltas should not continuously
+    // republish the full render snapshot. Raw messages still update; the snapshot catches up
+    // when the user returns to the live edge or the stream completes.
+    func setTimelineStreamingHistoryBrowsing(threadId: String, isBrowsing: Bool) {
+        if isBrowsing {
+            streamingTimelineBrowseThreadIDs.insert(threadId)
+            return
+        }
+
+        streamingTimelineBrowseThreadIDs.remove(threadId)
+        if streamingTimelineSuppressedSnapshotThreadIDs.remove(threadId) != nil {
+            refreshThreadTimelineState(for: threadId)
+        }
+    }
+
+    func shouldSuppressStreamingTimelineSnapshotUpdate(threadId: String, message: CodexMessage) -> Bool {
+        streamingTimelineBrowseThreadIDs.contains(threadId)
+            && message.isStreaming
+            && (message.role == .assistant || message.role == .system)
     }
 
     // Keeps the "latest output" cache in sync for both full refreshes and lightweight streaming updates.

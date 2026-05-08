@@ -46,6 +46,7 @@ struct TurnConversationContainerView: View {
     let onRevealEarlierMessages: (Int) -> Void
     let onLoadRemoteEarlierMessages: () -> Void
     let onRetryEarlierMessages: (@escaping () -> Void) -> Void
+    let onStreamingHistoryBrowseStateChanged: (Bool) -> Void
     let onTapOutsideComposer: () -> Void
 
     @State private var isShowingPinnedPlanSheet = false
@@ -135,6 +136,7 @@ struct TurnConversationContainerView: View {
                 onRevealEarlierMessages: onRevealEarlierMessages,
                 onLoadRemoteEarlierMessages: onLoadRemoteEarlierMessages,
                 onRetryEarlierMessages: onRetryEarlierMessages,
+                onStreamingHistoryBrowseStateChanged: onStreamingHistoryBrowseStateChanged,
                 onTapOutsideComposer: onTapOutsideComposer
             ) {
                 timelineEmptyState

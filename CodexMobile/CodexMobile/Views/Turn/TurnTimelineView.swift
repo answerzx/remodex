@@ -468,6 +468,7 @@ struct TurnTimelineView<EmptyState: View, Composer: View>: View {
     let onRevealEarlierMessages: (Int) -> Void
     let onLoadRemoteEarlierMessages: () -> Void
     let onRetryEarlierMessages: (@escaping () -> Void) -> Void
+    let onStreamingHistoryBrowseStateChanged: (Bool) -> Void
     let onTapOutsideComposer: () -> Void
     @ViewBuilder let emptyState: () -> EmptyState
     @ViewBuilder let composer: () -> Composer
@@ -802,6 +803,9 @@ struct TurnTimelineView<EmptyState: View, Composer: View>: View {
                         scheduleProgressiveTailRevealIfNeeded()
                         handleTimelineMutation(using: proxy)
                     }
+                    .onChange(of: isUserBrowsingStreamingHistory) { _, isBrowsing in
+                        onStreamingHistoryBrowseStateChanged(isBrowsing)
+                    }
                     .onChange(of: messages.count) { oldCount, newCount in
                         handleMessageCountChange(oldCount: oldCount, newCount: newCount)
                     }
@@ -823,12 +827,7 @@ struct TurnTimelineView<EmptyState: View, Composer: View>: View {
                         recomputeBlockInfoIfNeeded()
                     }
                     .onChange(of: threadID) { _, _ in
-                        debugTimelineLog("threadID changed to=\(threadID)")
-                        beginScrollSessionIfNeeded(force: true)
-                        recomputeRenderItemsIfNeeded()
-                        recomputeBlockInfoIfNeeded()
-                        scheduleProgressiveTailRevealIfNeeded()
-                        handleTimelineMutation(using: proxy)
+                        handleThreadIDChange(using: proxy)
                     }
                     .onChange(of: activeTurnID) { _, _ in
                         debugTimelineLog("activeTurnID changed to=\(activeTurnID ?? "nil")")
@@ -868,16 +867,10 @@ struct TurnTimelineView<EmptyState: View, Composer: View>: View {
                         })
                     }
                     .onAppear {
-                        debugTimelineLog("onAppear threadID=\(threadID) messageCount=\(messages.count)")
-                        beginScrollSessionIfNeeded()
-                        recomputeRenderItemsIfNeeded()
-                        recomputeBlockInfoIfNeeded()
-                        scheduleProgressiveTailRevealIfNeeded()
-                        handleTimelineMutation(using: proxy)
+                        handleTimelineAppear(using: proxy)
                     }
                     .onDisappear {
-                        debugTimelineLog("onDisappear threadID=\(threadID)")
-                        cancelScrollTasks()
+                        handleTimelineDisappear()
                     }
                 }
             }
@@ -898,6 +891,32 @@ struct TurnTimelineView<EmptyState: View, Composer: View>: View {
             messages: Array(visibleMessages),
             completedTurnIDs: completedTurnIDs
         )
+    }
+
+    private func handleThreadIDChange(using proxy: ScrollViewProxy) {
+        debugTimelineLog("threadID changed to=\(threadID)")
+        onStreamingHistoryBrowseStateChanged(false)
+        beginScrollSessionIfNeeded(force: true)
+        recomputeRenderItemsIfNeeded()
+        recomputeBlockInfoIfNeeded()
+        scheduleProgressiveTailRevealIfNeeded()
+        handleTimelineMutation(using: proxy)
+    }
+
+    private func handleTimelineAppear(using proxy: ScrollViewProxy) {
+        debugTimelineLog("onAppear threadID=\(threadID) messageCount=\(messages.count)")
+        onStreamingHistoryBrowseStateChanged(isUserBrowsingStreamingHistory)
+        beginScrollSessionIfNeeded()
+        recomputeRenderItemsIfNeeded()
+        recomputeBlockInfoIfNeeded()
+        scheduleProgressiveTailRevealIfNeeded()
+        handleTimelineMutation(using: proxy)
+    }
+
+    private func handleTimelineDisappear() {
+        debugTimelineLog("onDisappear threadID=\(threadID)")
+        onStreamingHistoryBrowseStateChanged(false)
+        cancelScrollTasks()
     }
 
     private static func refreshedRenderItems(
