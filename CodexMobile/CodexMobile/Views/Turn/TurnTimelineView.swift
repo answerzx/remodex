@@ -43,6 +43,7 @@ private struct TurnTimelineMessageRow: View {
     let planMatchingFingerprint: Int
     let newestStreamingMessageID: String?
     let autoScrollMode: TurnAutoScrollMode
+    let freezesStreamingDisplay: Bool
     let onRetryUserMessage: (String) -> Void
     let onTapAssistantRevert: (CodexMessage) -> Void
     let onTapSubagent: (CodexSubagentThreadPresentation) -> Void
@@ -60,6 +61,9 @@ private struct TurnTimelineMessageRow: View {
             currentWorkingDirectory: currentWorkingDirectory,
             planMatchingFingerprint: planMatchingFingerprint,
             showsStreamingAnimations: autoScrollMode == .followBottom
+                && !freezesStreamingDisplay
+                && message.id == newestStreamingMessageID,
+            freezesStreamingDisplay: freezesStreamingDisplay
                 && message.id == newestStreamingMessageID,
             inlineCommitAndPushAction: inlineCommitAndPushAction,
             inlineCommitAndPushPhase: inlineCommitAndPushPhase,
@@ -84,6 +88,7 @@ private struct TurnTimelineToolBurstView: View {
     let planMatchingFingerprint: Int
     let newestStreamingMessageID: String?
     let autoScrollMode: TurnAutoScrollMode
+    let freezesStreamingDisplay: Bool
     let onRetryUserMessage: (String) -> Void
     let onTapAssistantRevert: (CodexMessage) -> Void
     let onTapSubagent: (CodexSubagentThreadPresentation) -> Void
@@ -113,6 +118,7 @@ private struct TurnTimelineToolBurstView: View {
                     planMatchingFingerprint: planMatchingFingerprint,
                     newestStreamingMessageID: newestStreamingMessageID,
                     autoScrollMode: autoScrollMode,
+                    freezesStreamingDisplay: freezesStreamingDisplay,
                     onRetryUserMessage: onRetryUserMessage,
                     onTapAssistantRevert: onTapAssistantRevert,
                     onTapSubagent: onTapSubagent
@@ -160,6 +166,7 @@ private struct TurnTimelineToolBurstView: View {
                         planMatchingFingerprint: planMatchingFingerprint,
                         newestStreamingMessageID: newestStreamingMessageID,
                         autoScrollMode: autoScrollMode,
+                        freezesStreamingDisplay: freezesStreamingDisplay,
                         onRetryUserMessage: onRetryUserMessage,
                         onTapAssistantRevert: onTapAssistantRevert,
                         onTapSubagent: onTapSubagent
@@ -182,6 +189,7 @@ private struct TurnTimelinePreviousMessagesView: View {
     let planMatchingFingerprint: Int
     let newestStreamingMessageID: String?
     let autoScrollMode: TurnAutoScrollMode
+    let freezesStreamingDisplay: Bool
     let onRetryUserMessage: (String) -> Void
     let onTapAssistantRevert: (CodexMessage) -> Void
     let onTapSubagent: (CodexSubagentThreadPresentation) -> Void
@@ -235,6 +243,7 @@ private struct TurnTimelinePreviousMessagesView: View {
                         planMatchingFingerprint: planMatchingFingerprint,
                         newestStreamingMessageID: newestStreamingMessageID,
                         autoScrollMode: autoScrollMode,
+                        freezesStreamingDisplay: freezesStreamingDisplay,
                         onRetryUserMessage: onRetryUserMessage,
                         onTapAssistantRevert: onTapAssistantRevert,
                         onTapSubagent: onTapSubagent
@@ -262,6 +271,7 @@ private struct TurnTimelineRowsSection: View {
     let planMatchingFingerprint: Int
     let newestStreamingMessageID: String?
     let autoScrollMode: TurnAutoScrollMode
+    let freezesStreamingDisplay: Bool
     let onRetryUserMessage: (String) -> Void
     let onTapAssistantRevert: (CodexMessage) -> Void
     let onTapSubagent: (CodexSubagentThreadPresentation) -> Void
@@ -313,6 +323,7 @@ private struct TurnTimelineRowsSection: View {
                         planMatchingFingerprint: planMatchingFingerprint,
                         newestStreamingMessageID: newestStreamingMessageID,
                         autoScrollMode: autoScrollMode,
+                        freezesStreamingDisplay: freezesStreamingDisplay,
                         onRetryUserMessage: onRetryUserMessage,
                         onTapAssistantRevert: onTapAssistantRevert,
                         onTapSubagent: onTapSubagent
@@ -330,6 +341,7 @@ private struct TurnTimelineRowsSection: View {
                         planMatchingFingerprint: planMatchingFingerprint,
                         newestStreamingMessageID: newestStreamingMessageID,
                         autoScrollMode: autoScrollMode,
+                        freezesStreamingDisplay: freezesStreamingDisplay,
                         onRetryUserMessage: onRetryUserMessage,
                         onTapAssistantRevert: onTapAssistantRevert,
                         onTapSubagent: onTapSubagent
@@ -347,6 +359,7 @@ private struct TurnTimelineRowsSection: View {
                         planMatchingFingerprint: planMatchingFingerprint,
                         newestStreamingMessageID: newestStreamingMessageID,
                         autoScrollMode: autoScrollMode,
+                        freezesStreamingDisplay: freezesStreamingDisplay,
                         onRetryUserMessage: onRetryUserMessage,
                         onTapAssistantRevert: onTapAssistantRevert,
                         onTapSubagent: onTapSubagent
@@ -560,8 +573,17 @@ struct TurnTimelineView<EmptyState: View, Composer: View>: View {
             && visibleTailCount < min(messages.count, Self.initialVisibleTailCount)
     }
 
+    private var hasVisibleStreamingMessage: Bool {
+        visibleMessages.contains(where: \.isStreaming)
+    }
+
     private var isStreamingTimelineActive: Bool {
-        cachedNewestStreamingMessageID != nil || visibleMessages.contains(where: \.isStreaming)
+        cachedNewestStreamingMessageID != nil || hasVisibleStreamingMessage
+    }
+
+    private var isUserBrowsingStreamingHistory: Bool {
+        hasVisibleStreamingMessage
+            && (shouldPauseAutomaticScrolling || autoScrollMode != .followBottom || !isScrolledToBottom)
     }
 
     private var shouldShowFullTimelineLoader: Bool {
@@ -672,6 +694,7 @@ struct TurnTimelineView<EmptyState: View, Composer: View>: View {
                             planMatchingFingerprint: planMatchingFingerprint,
                             newestStreamingMessageID: cachedNewestStreamingMessageID,
                             autoScrollMode: autoScrollMode,
+                            freezesStreamingDisplay: isUserBrowsingStreamingHistory,
                             onRetryUserMessage: onRetryUserMessage,
                             onTapAssistantRevert: onTapAssistantRevert,
                             onTapSubagent: onTapSubagent,
@@ -761,6 +784,10 @@ struct TurnTimelineView<EmptyState: View, Composer: View>: View {
                             "timelineChangeToken changed token=\(timelineChangeToken) "
                                 + "messageCount=\(messages.count) visibleTail=\(visibleTailCount)"
                         )
+                        if isUserBrowsingStreamingHistory {
+                            refreshNewestStreamingMessageIDIfNeeded()
+                            return
+                        }
                         recomputeRenderItemsIfNeeded()
                         recomputeBlockInfoIfNeeded()
                         scheduleProgressiveTailRevealIfNeeded()
@@ -929,6 +956,11 @@ struct TurnTimelineView<EmptyState: View, Composer: View>: View {
             cachedBlockInfoByMessageID = updated
         }
 
+        refreshNewestStreamingMessageIDIfNeeded()
+    }
+
+    private func refreshNewestStreamingMessageIDIfNeeded() {
+        let visible = Array(visibleMessages)
         let newestStreamingMessageID = visible.last(where: { $0.isStreaming })?.id
         if newestStreamingMessageID != cachedNewestStreamingMessageID {
             cachedNewestStreamingMessageID = newestStreamingMessageID

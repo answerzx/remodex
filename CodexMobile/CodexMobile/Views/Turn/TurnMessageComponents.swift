@@ -1136,6 +1136,8 @@ struct MessageRow: View, Equatable {
     var planMatchingFingerprint: Int = 0
     // Disables timer-driven adornments while the user reads older content.
     var showsStreamingAnimations: Bool = true
+    // Freezes streaming text while the user is actively scrolling older content.
+    var freezesStreamingDisplay: Bool = false
     // Passed as init params so .equatable() can invalidate only for row-visible action state.
     var inlineCommitAndPushAction: (() -> Void)? = nil
     var inlineCommitAndPushPhase: InlineCommitAndPushPhase? = nil
@@ -1160,6 +1162,7 @@ struct MessageRow: View, Equatable {
             && lhs.currentWorkingDirectory == rhs.currentWorkingDirectory
             && lhs.planMatchingFingerprint == rhs.planMatchingFingerprint
             && lhs.showsStreamingAnimations == rhs.showsStreamingAnimations
+            && lhs.freezesStreamingDisplay == rhs.freezesStreamingDisplay
             && (lhs.inlineCommitAndPushAction != nil) == (rhs.inlineCommitAndPushAction != nil)
             && lhs.inlineCommitAndPushPhase == rhs.inlineCommitAndPushPhase
             && (lhs.gitWorkingDirectorySelectionAction != nil) == (rhs.gitWorkingDirectorySelectionAction != nil)
@@ -1215,6 +1218,9 @@ struct MessageRow: View, Equatable {
         }
         .onChange(of: message.isStreaming) { _, isStreaming in
             synchronizeAssistantDisplayText(immediate: !isStreaming)
+        }
+        .onChange(of: freezesStreamingDisplay) { _, freezes in
+            synchronizeAssistantDisplayText(immediate: !freezes)
         }
         .onDisappear {
             assistantDisplayUpdateTask?.cancel()
@@ -2029,6 +2035,12 @@ struct MessageRow: View, Equatable {
             assistantDisplayUpdateTask?.cancel()
             assistantDisplayUpdateTask = nil
             throttledAssistantDisplayText = nextText
+            return
+        }
+
+        if freezesStreamingDisplay {
+            assistantDisplayUpdateTask?.cancel()
+            assistantDisplayUpdateTask = nil
             return
         }
 
