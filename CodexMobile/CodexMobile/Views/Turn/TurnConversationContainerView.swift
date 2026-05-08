@@ -51,18 +51,23 @@ struct TurnConversationContainerView: View {
     @State private var isShowingPinnedPlanSheet = false
     @State private var cachedMessageLayout = TimelineMessageLayout.empty
     @State private var lastMessageLayoutThreadID: String?
-    @State private var lastMessageLayoutToken: Int = -1
+    @State private var lastMessageLayoutSignature: TimelineMessageLayoutSignature?
 
     // Falls back to a one-off rebuild during first render, then keeps later renders on cached derived state.
     private var messageLayout: TimelineMessageLayout {
+        let signature = Self.messageLayoutSignature(
+            threadID: threadID,
+            messages: messages,
+            planSessionSource: planSessionSource
+        )
         guard lastMessageLayoutThreadID == threadID,
-              lastMessageLayoutToken == timelineChangeToken else {
+              lastMessageLayoutSignature == signature else {
             return Self.buildMessageLayout(
                 from: messages,
                 planSessionSource: planSessionSource
             )
         }
-        return cachedMessageLayout
+        return Self.refreshedMessageLayout(cachedMessageLayout, with: messages)
     }
 
     // Keeps accessory-only chats informative instead of showing a blank viewport.
@@ -198,15 +203,76 @@ struct TurnConversationContainerView: View {
     private func rebuildMessageLayoutIfNeeded(force: Bool = false) {
         guard force
                 || lastMessageLayoutThreadID != threadID
-                || lastMessageLayoutToken != timelineChangeToken else {
+                || lastMessageLayoutSignature != Self.messageLayoutSignature(
+                    threadID: threadID,
+                    messages: messages,
+                    planSessionSource: planSessionSource
+                ) else {
             return
         }
 
+        let signature = Self.messageLayoutSignature(
+            threadID: threadID,
+            messages: messages,
+            planSessionSource: planSessionSource
+        )
         lastMessageLayoutThreadID = threadID
-        lastMessageLayoutToken = timelineChangeToken
+        lastMessageLayoutSignature = signature
         cachedMessageLayout = Self.buildMessageLayout(
             from: messages,
             planSessionSource: planSessionSource
+        )
+    }
+
+    private static func refreshedMessageLayout(
+        _ layout: TimelineMessageLayout,
+        with messages: [CodexMessage]
+    ) -> TimelineMessageLayout {
+        guard !messages.isEmpty else {
+            return layout
+        }
+
+        var latestByID: [String: CodexMessage] = [:]
+        latestByID.reserveCapacity(messages.count)
+        for message in messages {
+            latestByID[message.id] = message
+        }
+
+        func refreshed(_ message: CodexMessage?) -> CodexMessage? {
+            guard let message else { return nil }
+            return latestByID[message.id] ?? message
+        }
+
+        return TimelineMessageLayout(
+            timelineMessages: layout.timelineMessages.map { latestByID[$0.id] ?? $0 },
+            pinnedTaskPlanMessage: refreshed(layout.pinnedTaskPlanMessage),
+            activeStructuredPromptMessage: refreshed(layout.activeStructuredPromptMessage)
+        )
+    }
+
+    private static func messageLayoutSignature(
+        threadID: String,
+        messages: [CodexMessage],
+        planSessionSource: CodexPlanSessionSource?
+    ) -> TimelineMessageLayoutSignature {
+        var hasher = Hasher()
+        hasher.combine(planSessionSource?.isNative == true)
+        for message in messages {
+            hasher.combine(message.id)
+            hasher.combine(message.role)
+            hasher.combine(message.kind)
+            hasher.combine(message.isStreaming)
+            hasher.combine(message.resolvedPlanPresentation)
+            hasher.combine(message.planState)
+            hasher.combine(message.structuredUserInputRequest)
+            if message.isPlanSystemMessage {
+                hasher.combine(TurnTextCacheKey.fingerprint(for: message.text))
+            }
+        }
+        return TimelineMessageLayoutSignature(
+            threadID: threadID,
+            messageCount: messages.count,
+            structureHash: hasher.finalize()
         )
     }
 
@@ -260,6 +326,12 @@ private struct TimelineMessageLayout: Equatable {
         pinnedTaskPlanMessage: nil,
         activeStructuredPromptMessage: nil
     )
+}
+
+private struct TimelineMessageLayoutSignature: Equatable {
+    let threadID: String
+    let messageCount: Int
+    let structureHash: Int
 }
 
 private struct AccessoryBackedEmptyState: View {

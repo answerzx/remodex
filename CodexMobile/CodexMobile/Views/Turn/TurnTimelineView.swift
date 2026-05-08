@@ -504,7 +504,7 @@ struct TurnTimelineView<EmptyState: View, Composer: View>: View {
     private var visibleRenderItems: [TurnTimelineRenderItem] {
         let signature = renderItemsCacheSignature(for: visibleMessages)
         if signature == cachedRenderItemsSignature {
-            return cachedRenderItems
+            return Self.refreshedRenderItems(cachedRenderItems, with: visibleMessages)
         }
         return TurnTimelineRenderProjection.project(
             messages: Array(visibleMessages),
@@ -589,13 +589,36 @@ struct TurnTimelineView<EmptyState: View, Composer: View>: View {
     private func renderItemsCacheSignature(for messages: ArraySlice<CodexMessage>) -> TurnTimelineRenderItemsCacheSignature {
         var hasher = Hasher()
         hasher.combine(completedTurnIDs)
+        var structureHasher = Hasher()
+        for message in messages {
+            structureHasher.combine(message.id)
+            structureHasher.combine(message.role)
+            structureHasher.combine(message.kind)
+            structureHasher.combine(message.turnId)
+            structureHasher.combine(message.itemId)
+            structureHasher.combine(message.assistantPhase)
+            structureHasher.combine(message.isStreaming)
+            structureHasher.combine(message.orderIndex)
+            if !message.isStreaming {
+                switch message.role {
+                case .assistant:
+                    structureHasher.combine(TurnTextCacheKey.fingerprint(for: message.text))
+                case .system:
+                    if message.kind == .fileChange || message.kind == .plan {
+                        structureHasher.combine(TurnTextCacheKey.fingerprint(for: message.text))
+                    }
+                case .user:
+                    break
+                }
+            }
+        }
         return TurnTimelineRenderItemsCacheSignature(
             threadID: threadID,
-            timelineChangeToken: timelineChangeToken,
             visibleTailCount: visibleTailCount,
             messageCount: messages.count,
             firstMessageID: messages.first?.id,
             lastMessageID: messages.last?.id,
+            structureHash: structureHasher.finalize(),
             completedTurnIDsHash: hasher.finalize()
         )
     }
@@ -837,6 +860,41 @@ struct TurnTimelineView<EmptyState: View, Composer: View>: View {
         )
     }
 
+    private static func refreshedRenderItems(
+        _ items: [TurnTimelineRenderItem],
+        with messages: ArraySlice<CodexMessage>
+    ) -> [TurnTimelineRenderItem] {
+        guard !items.isEmpty, !messages.isEmpty else {
+            return items
+        }
+
+        var latestByID: [String: CodexMessage] = [:]
+        latestByID.reserveCapacity(messages.count)
+        for message in messages {
+            latestByID[message.id] = message
+        }
+
+        func refreshedMessage(_ message: CodexMessage) -> CodexMessage {
+            latestByID[message.id] ?? message
+        }
+
+        return items.map { item in
+            switch item {
+            case .message(let message):
+                return .message(refreshedMessage(message))
+            case .toolBurst(let group):
+                return .toolBurst(TurnTimelineToolBurstGroup(
+                    messages: group.messages.map(refreshedMessage)
+                ))
+            case .previousMessages(let group):
+                return .previousMessages(TurnTimelinePreviousMessagesGroup(
+                    finalMessage: refreshedMessage(group.finalMessage),
+                    messages: group.messages.map(refreshedMessage)
+                ))
+            }
+        }
+    }
+
     private func recomputeBlockInfoIfNeeded() {
         let visible = Array(visibleMessages)
         let key = blockInfoInputKey(for: visible)
@@ -891,11 +949,9 @@ struct TurnTimelineView<EmptyState: View, Composer: View>: View {
             hasher.combine(message.kind)
             hasher.combine(message.turnId)
             hasher.combine(message.isStreaming)
-            // During streaming, text changes every delta — hash only the length to avoid
-            // O(text_length) hashing per frame. Once finalized, hash full text for reconciliation.
-            if message.isStreaming {
-                hasher.combine(message.text.count)
-            } else {
+            // Streaming rows update their own visible text. Accessory placement and copy
+            // buttons only need text once the row is finalized.
+            if !message.isStreaming {
                 hasher.combine(message.text)
             }
         }
@@ -1349,7 +1405,7 @@ struct TurnTimelineView<EmptyState: View, Composer: View>: View {
         let expectedThreadID = threadID
         followBottomScrollTask = Task { @MainActor in
             defer { followBottomScrollTask = nil }
-            try? await Task.sleep(nanoseconds: 120_000_000)
+            try? await Task.sleep(nanoseconds: 40_000_000)
             guard !Task.isCancelled,
                   scrollSessionThreadID == expectedThreadID,
                   !shouldPauseAutomaticScrolling else {
@@ -1686,11 +1742,11 @@ private struct ScrollBottomGeometry: Equatable {
 // Keeps scroll-only body passes from deeply hashing every hydrated message.
 private struct TurnTimelineRenderItemsCacheSignature: Equatable {
     let threadID: String
-    let timelineChangeToken: Int
     let visibleTailCount: Int
     let messageCount: Int
     let firstMessageID: String?
     let lastMessageID: String?
+    let structureHash: Int
     let completedTurnIDsHash: Int
 }
 

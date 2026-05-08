@@ -35,11 +35,13 @@ struct TurnTimelineToolBurstGroup: Identifiable, Equatable {
 struct TurnTimelinePreviousMessagesGroup: Identifiable, Equatable {
     let id: String
     let finalMessageID: String
+    let finalMessage: CodexMessage
     let messages: [CodexMessage]
 
     init(finalMessage: CodexMessage, messages: [CodexMessage]) {
         self.id = "previous-messages:\(finalMessage.id)"
         self.finalMessageID = finalMessage.id
+        self.finalMessage = finalMessage
         self.messages = messages
     }
 

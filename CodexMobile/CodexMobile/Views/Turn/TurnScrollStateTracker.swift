@@ -14,7 +14,7 @@ enum TurnAutoScrollMode {
 }
 
 struct TurnScrollStateTracker {
-    static let bottomThreshold: CGFloat = 12
+    static let bottomThreshold: CGFloat = 24
     static let userScrollCooldown: TimeInterval = 0.25
     static let contentHeightCorrectionThreshold: CGFloat = 1
 

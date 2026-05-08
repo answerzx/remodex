@@ -1148,6 +1148,8 @@ struct MessageRow: View, Equatable {
     @State private var pendingAssistantDisplayText: String?
     @State private var assistantDisplayUpdateTask: Task<Void, Never>?
 
+    private static let assistantDisplayUpdateIntervalNanoseconds: UInt64 = 33_000_000
+
     static func == (lhs: MessageRow, rhs: MessageRow) -> Bool {
         lhs.message == rhs.message
             && lhs.isRetryAvailable == rhs.isRetryAvailable
@@ -2042,7 +2044,7 @@ struct MessageRow: View, Equatable {
         }
 
         assistantDisplayUpdateTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 100_000_000)
+            try? await Task.sleep(nanoseconds: Self.assistantDisplayUpdateIntervalNanoseconds)
             guard !Task.isCancelled else { return }
             throttledAssistantDisplayText = pendingAssistantDisplayText ?? nextText
             assistantDisplayUpdateTask = nil
