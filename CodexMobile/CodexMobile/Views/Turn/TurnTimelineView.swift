@@ -854,6 +854,12 @@ struct TurnTimelineView<EmptyState: View, Composer: View>: View {
                     }
                     .onChange(of: shouldAnchorToAssistantResponse) { _, newValue in
                         if newValue {
+                            guard autoScrollMode == .followBottom,
+                                  isScrolledToBottom,
+                                  !shouldPauseAutomaticScrolling else {
+                                shouldAnchorToAssistantResponse = false
+                                return
+                            }
                             autoScrollMode = .anchorAssistantResponse
                             handleTimelineMutation(using: proxy)
                         } else if autoScrollMode == .anchorAssistantResponse {
@@ -1334,6 +1340,7 @@ struct TurnTimelineView<EmptyState: View, Composer: View>: View {
 
         if nextValue {
             isScrolledToBottom = true
+            onStreamingHistoryBrowseStateChanged(false)
             if autoScrollMode != .anchorAssistantResponse {
                 autoScrollMode = .followBottom
             }
@@ -1343,6 +1350,9 @@ struct TurnTimelineView<EmptyState: View, Composer: View>: View {
             autoScrollMode = TurnScrollStateTracker.modeAfterAcceptedNotBottomGeometry(
                 currentMode: autoScrollMode
             )
+            if isStreamingTimelineActive {
+                onStreamingHistoryBrowseStateChanged(true)
+            }
             // Cancel queued app snaps once geometry confirms the viewport is away
             // from bottom; transient content-growth frames are filtered above.
             if autoScrollMode == .manual || autoScrollMode == .anchorAssistantResponse {
@@ -1366,6 +1376,10 @@ struct TurnTimelineView<EmptyState: View, Composer: View>: View {
         progressiveTailRevealTask = nil
         isProgressivelyRevealingRecentTail = false
         autoScrollMode = TurnScrollStateTracker.modeAfterUserDragBegan(currentMode: autoScrollMode)
+        shouldAnchorToAssistantResponse = false
+        if isStreamingTimelineActive {
+            onStreamingHistoryBrowseStateChanged(true)
+        }
     }
 
     // Preserves user-controlled deceleration for a short cooldown before auto-follow can resume.
@@ -1376,6 +1390,11 @@ struct TurnTimelineView<EmptyState: View, Composer: View>: View {
             currentMode: autoScrollMode,
             isScrolledToBottom: isScrolledToBottom
         )
+        if isScrolledToBottom {
+            onStreamingHistoryBrowseStateChanged(false)
+        } else if isStreamingTimelineActive {
+            onStreamingHistoryBrowseStateChanged(true)
+        }
     }
 
     // Mirrors user-driven scroll phases without pausing auto-follow during programmatic animations.

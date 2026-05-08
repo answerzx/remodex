@@ -22,12 +22,8 @@ struct TurnScrollStateTracker {
         messageCount > 0 && !isScrolledToBottom
     }
 
-    // Lets user drag intent disarm follow-bottom immediately, but preserves
-    // explicit assistant anchoring until that one-off jump completes.
+    // Lets user drag intent disarm every app-owned scroll target immediately.
     static func modeAfterUserDragBegan(currentMode: TurnAutoScrollMode) -> TurnAutoScrollMode {
-        guard currentMode != .anchorAssistantResponse else {
-            return currentMode
-        }
         return .manual
     }
 
@@ -37,9 +33,6 @@ struct TurnScrollStateTracker {
         currentMode: TurnAutoScrollMode,
         isScrolledToBottom: Bool
     ) -> TurnAutoScrollMode {
-        guard currentMode != .anchorAssistantResponse else {
-            return currentMode
-        }
         return isScrolledToBottom ? .followBottom : .manual
     }
 
