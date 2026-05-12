@@ -945,6 +945,11 @@ final class CodexService {
     }
 
     var preferredTrustedMacDeviceId: String? {
+        if let normalizedRelayMacDeviceId,
+           trustedMacRegistry.records[normalizedRelayMacDeviceId] != nil {
+            return normalizedRelayMacDeviceId
+        }
+
         if let normalizedLastTrustedMacDeviceId,
            trustedMacRegistry.records[normalizedLastTrustedMacDeviceId] != nil {
             return normalizedLastTrustedMacDeviceId
@@ -965,8 +970,32 @@ final class CodexService {
         return trustedMacRegistry.records[preferredTrustedMacDeviceId]
     }
 
+    var trustedMacReconnectCandidates: [CodexTrustedMacRecord] {
+        var orderedIDs: [String] = []
+        func appendCandidateID(_ id: String?) {
+            guard let normalizedID = id?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
+                  trustedMacRegistry.records[normalizedID] != nil,
+                  !orderedIDs.contains(normalizedID) else {
+                return
+            }
+            orderedIDs.append(normalizedID)
+        }
+
+        appendCandidateID(normalizedRelayMacDeviceId)
+        appendCandidateID(normalizedLastTrustedMacDeviceId)
+        trustedMacRegistry.records.values
+            .sorted { lhs, rhs in
+                (lhs.lastUsedAt ?? lhs.lastPairedAt) > (rhs.lastUsedAt ?? rhs.lastPairedAt)
+            }
+            .forEach { appendCandidateID($0.macDeviceId) }
+
+        return orderedIDs.compactMap { trustedMacRegistry.records[$0] }
+    }
+
     var hasTrustedMacReconnectCandidate: Bool {
-        preferredTrustedMacRecord?.relayURL?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        trustedMacReconnectCandidates.contains {
+            $0.relayURL?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        }
     }
 
     var hasReconnectCandidate: Bool {

@@ -663,9 +663,46 @@ private extension CodexService {
     }
     // Resolves the live relay session for the preferred trusted Mac before we reconnect the socket.
     func resolveTrustedMacSessionImpl() async throws -> CodexTrustedSessionResolveResponse {
-        guard let trustedMac = preferredTrustedMacRecord else {
+        let trustedMacCandidates = trustedMacReconnectCandidates.filter {
+            $0.relayURL?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        }
+        guard !trustedMacCandidates.isEmpty else {
             throw CodexTrustedSessionResolveError.noTrustedMac
         }
+
+        var lastMacOfflineError: CodexTrustedSessionResolveError?
+        var lastRetriableResolveError: CodexTrustedSessionResolveError?
+        for (candidateIndex, trustedMac) in trustedMacCandidates.enumerated() {
+            do {
+                return try await resolveTrustedMacSession(for: trustedMac)
+            } catch let error as CodexTrustedSessionResolveError {
+                switch error {
+                case .macOffline:
+                    lastMacOfflineError = error
+                    if candidateIndex < trustedMacCandidates.count - 1 {
+                        continue
+                    }
+                    throw error
+                case .unsupportedRelay, .invalidResponse, .network:
+                    lastRetriableResolveError = error
+                    if candidateIndex < trustedMacCandidates.count - 1 {
+                        continue
+                    }
+                    throw error
+                case .rePairRequired, .noTrustedMac:
+                    throw error
+                }
+            }
+        }
+
+        throw lastRetriableResolveError
+            ?? lastMacOfflineError
+            ?? CodexTrustedSessionResolveError.noTrustedMac
+    }
+
+    private func resolveTrustedMacSession(
+        for trustedMac: CodexTrustedMacRecord
+    ) async throws -> CodexTrustedSessionResolveResponse {
         guard let relayURL = trustedMac.relayURL?.trimmingCharacters(in: .whitespacesAndNewlines),
               !relayURL.isEmpty else {
             throw CodexTrustedSessionResolveError.noTrustedMac

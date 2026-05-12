@@ -50,6 +50,36 @@ final class ContentViewModelReconnectTests: XCTestCase {
         )
     }
 
+    func testTrustedMacReconnectPrefersCurrentRelayMacOverStaleLastTrustedMac() {
+        let service = makeService()
+        let currentMacID = "mac-current-\(UUID().uuidString)"
+        let staleMacID = "mac-stale-\(UUID().uuidString)"
+        let relayURL = "wss://relay.local/relay"
+
+        service.trustedMacRegistry.records[staleMacID] = CodexTrustedMacRecord(
+            macDeviceId: staleMacID,
+            macIdentityPublicKey: Data(repeating: 21, count: 32).base64EncodedString(),
+            lastPairedAt: Date().addingTimeInterval(10),
+            relayURL: relayURL,
+            lastUsedAt: Date().addingTimeInterval(10)
+        )
+        service.trustedMacRegistry.records[currentMacID] = CodexTrustedMacRecord(
+            macDeviceId: currentMacID,
+            macIdentityPublicKey: Data(repeating: 22, count: 32).base64EncodedString(),
+            lastPairedAt: Date(),
+            relayURL: relayURL,
+            lastUsedAt: Date()
+        )
+        service.lastTrustedMacDeviceId = staleMacID
+        service.relayMacDeviceId = currentMacID
+
+        XCTAssertEqual(service.preferredTrustedMacDeviceId, currentMacID)
+        XCTAssertEqual(
+            service.trustedMacReconnectCandidates.map(\.macDeviceId),
+            [currentMacID, staleMacID]
+        )
+    }
+
     func testPreferredReconnectURLFallsBackToSavedSessionWhenTrustedResolveReportsOffline() async {
         let service = makeService()
         let viewModel = ContentViewModel()
