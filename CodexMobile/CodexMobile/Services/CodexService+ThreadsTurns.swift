@@ -845,7 +845,11 @@ extension CodexService {
 
     func createContinuationThread(from archivedThreadId: String) async throws -> CodexThread {
         let continuationRuntimeOverride = threadRuntimeOverride(for: archivedThreadId)
-        let continuationThread = try await startThread(runtimeOverride: continuationRuntimeOverride)
+        let continuationProjectPath = preferredContinuationProjectPath(for: archivedThreadId)
+        let continuationThread = try await startThread(
+            preferredProjectPath: continuationProjectPath,
+            runtimeOverride: continuationRuntimeOverride
+        )
         appendSystemMessage(
             threadId: continuationThread.id,
             text: "Continued from archived thread `\(archivedThreadId)`"

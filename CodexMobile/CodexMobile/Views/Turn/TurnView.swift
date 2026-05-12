@@ -49,11 +49,6 @@ struct TurnView: View {
     init(thread: CodexThread, isWakingMacDisplayRecovery: Bool) {
         self.thread = thread
         self.isWakingMacDisplayRecovery = isWakingMacDisplayRecovery
-        _gitWorkingDirectoryOverride = State(
-            initialValue: UserDefaults.standard.string(
-                forKey: Self.gitWorkingDirectoryOverrideKey(threadID: thread.id)
-            )
-        )
     }
 
     // ─── ENTRY POINT ─────────────────────────────────────────────
@@ -935,14 +930,9 @@ struct TurnView: View {
         codex.thread(for: thread.id) ?? thread
     }
 
-    private static let gitWorkingDirectoryOverrideKeyPrefix = "CodexMobile.gitWorkingDirectoryOverride."
-
-    private static func gitWorkingDirectoryOverrideKey(threadID: String) -> String {
-        gitWorkingDirectoryOverrideKeyPrefix + threadID
-    }
-
     private func effectiveGitWorkingDirectory(for thread: CodexThread) -> String? {
         normalizedGitWorkingDirectory(gitWorkingDirectoryOverride)
+            ?? codex.gitWorkingDirectoryOverride(for: thread.id)
             ?? normalizedGitWorkingDirectory(thread.gitWorkingDirectory)
     }
 
@@ -956,14 +946,13 @@ struct TurnView: View {
         guard let normalizedPath = normalizedGitWorkingDirectory(path) else { return }
         let previousWorkingDirectory = effectiveGitWorkingDirectory(for: currentResolvedThread)
         let threadWorkingDirectory = normalizedGitWorkingDirectory(currentResolvedThread.gitWorkingDirectory)
-        let overrideKey = Self.gitWorkingDirectoryOverrideKey(threadID: thread.id)
 
         if normalizedPath == threadWorkingDirectory {
             gitWorkingDirectoryOverride = nil
-            UserDefaults.standard.removeObject(forKey: overrideKey)
+            codex.setGitWorkingDirectoryOverride(nil, for: thread.id)
         } else {
             gitWorkingDirectoryOverride = normalizedPath
-            UserDefaults.standard.set(normalizedPath, forKey: overrideKey)
+            codex.setGitWorkingDirectoryOverride(normalizedPath, for: thread.id)
         }
         if normalizedPath != previousWorkingDirectory {
             viewModel.resetGitStateForWorkingDirectoryChange()
@@ -1345,7 +1334,7 @@ struct TurnView: View {
     // Re-resolves the thread at action time so follow-up chats inherit the freshest cwd after sync/reconnect.
     private func resolvedProjectPathForFollowUpThread() -> String? {
         let currentThread = codex.thread(for: thread.id) ?? thread
-        return currentThread.normalizedProjectPath
+        return effectiveGitWorkingDirectory(for: currentThread)
     }
 
     // Creates a fresh thread in the same project and opens it straight into the review flow.

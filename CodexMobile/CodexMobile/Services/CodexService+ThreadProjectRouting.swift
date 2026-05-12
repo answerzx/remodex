@@ -131,6 +131,41 @@ extension CodexService {
         persistAssociatedManagedWorktreePaths()
     }
 
+    func gitWorkingDirectoryOverride(for threadId: String?) -> String? {
+        guard let normalizedThreadId = normalizedInterruptIdentifier(threadId) ?? normalizedThreadIdValue(threadId) else {
+            return nil
+        }
+
+        return normalizedStoredProjectPath(gitWorkingDirectoryOverridesByThreadID[normalizedThreadId])
+    }
+
+    func preferredContinuationProjectPath(for threadId: String?) -> String? {
+        guard let normalizedThreadId = normalizedInterruptIdentifier(threadId) ?? normalizedThreadIdValue(threadId) else {
+            return nil
+        }
+
+        return gitWorkingDirectoryOverride(for: normalizedThreadId)
+            ?? thread(for: normalizedThreadId)?.gitWorkingDirectory
+    }
+
+    func setGitWorkingDirectoryOverride(_ projectPath: String?, for threadId: String) {
+        guard let normalizedThreadId = normalizedInterruptIdentifier(threadId) ?? normalizedThreadIdValue(threadId) else {
+            return
+        }
+
+        let normalizedProjectPath = normalizedStoredProjectPath(projectPath)
+        if gitWorkingDirectoryOverridesByThreadID[normalizedThreadId] == normalizedProjectPath {
+            return
+        }
+
+        if let normalizedProjectPath {
+            gitWorkingDirectoryOverridesByThreadID[normalizedThreadId] = normalizedProjectPath
+        } else {
+            gitWorkingDirectoryOverridesByThreadID.removeValue(forKey: normalizedThreadId)
+        }
+        persistGitWorkingDirectoryOverrides()
+    }
+
     func currentAuthoritativeProjectPath(for threadId: String?) -> String? {
         guard let normalizedThreadId = normalizedInterruptIdentifier(threadId) ?? normalizedThreadIdValue(threadId) else {
             return nil
@@ -245,6 +280,16 @@ private extension CodexService {
         }
 
         defaults.set(encoded, forKey: Self.associatedManagedWorktreePathsDefaultsKey)
+    }
+
+    func persistGitWorkingDirectoryOverrides() {
+        guard !gitWorkingDirectoryOverridesByThreadID.isEmpty,
+              let encoded = try? encoder.encode(gitWorkingDirectoryOverridesByThreadID) else {
+            defaults.removeObject(forKey: Self.gitWorkingDirectoryOverridesDefaultsKey)
+            return
+        }
+
+        defaults.set(encoded, forKey: Self.gitWorkingDirectoryOverridesDefaultsKey)
     }
 
     func normalizedThreadIdValue(_ value: String?) -> String? {

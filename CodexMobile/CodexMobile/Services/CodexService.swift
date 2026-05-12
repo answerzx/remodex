@@ -394,6 +394,8 @@ final class CodexService {
     var selectedServiceTier: CodexServiceTier?
     // Per-chat runtime overrides let the composer diverge from app-wide defaults.
     var threadRuntimeOverridesByThreadID: [String: CodexThreadRuntimeOverride] = [:]
+    // Per-chat Git folder overrides come from the mobile picker and must survive continuation.
+    @ObservationIgnored var gitWorkingDirectoryOverridesByThreadID: [String: String] = [:]
     var selectedAccessMode: CodexAccessMode = .onRequest
     // Bridge-owned ChatGPT auth snapshot used by Settings and voice gating.
     var gptAccountSnapshot: CodexGPTAccountSnapshot = codexGPTAccountInitialSnapshot() {
@@ -662,6 +664,8 @@ final class CodexService {
     static let selectedReasoningEffortDefaultsKey = "codex.selectedReasoningEffort"
     static let selectedServiceTierDefaultsKey = "codex.selectedServiceTier"
     static let threadRuntimeOverridesDefaultsKey = "codex.threadRuntimeOverrides"
+    static let gitWorkingDirectoryOverridesDefaultsKey = "codex.gitWorkingDirectoryOverrides"
+    static let legacyGitWorkingDirectoryOverrideKeyPrefix = "CodexMobile.gitWorkingDirectoryOverride."
     static let planSessionSourcesDefaultsKey = "codex.planSessionSources"
     static let selectedAccessModeDefaultsKey = "codex.selectedAccessMode"
     static let locallyArchivedThreadIDsKey = "codex.locallyArchivedThreadIDs"
@@ -744,6 +748,26 @@ final class CodexService {
             self.threadRuntimeOverridesByThreadID = decodedThreadRuntimeOverrides
         } else {
             self.threadRuntimeOverridesByThreadID = [:]
+        }
+
+        if let savedGitWorkingDirectoryOverrides = defaults.data(forKey: Self.gitWorkingDirectoryOverridesDefaultsKey),
+           let decodedGitWorkingDirectoryOverrides = try? decoder.decode(
+               [String: String].self,
+               from: savedGitWorkingDirectoryOverrides
+           ) {
+            self.gitWorkingDirectoryOverridesByThreadID = decodedGitWorkingDirectoryOverrides
+        } else {
+            self.gitWorkingDirectoryOverridesByThreadID = [:]
+        }
+        let legacyGitWorkingDirectoryOverrides = Self.loadLegacyGitWorkingDirectoryOverrides(from: defaults)
+        if !legacyGitWorkingDirectoryOverrides.isEmpty {
+            for (threadId, projectPath) in legacyGitWorkingDirectoryOverrides
+                where self.gitWorkingDirectoryOverridesByThreadID[threadId] == nil {
+                self.gitWorkingDirectoryOverridesByThreadID[threadId] = projectPath
+            }
+            if let encodedGitWorkingDirectoryOverrides = try? encoder.encode(self.gitWorkingDirectoryOverridesByThreadID) {
+                defaults.set(encodedGitWorkingDirectoryOverrides, forKey: Self.gitWorkingDirectoryOverridesDefaultsKey)
+            }
         }
 
         if let savedPlanSessionSources = defaults.data(forKey: Self.planSessionSourcesDefaultsKey),
@@ -1042,6 +1066,24 @@ final class CodexService {
         }
 
         return .connected
+    }
+
+    private static func loadLegacyGitWorkingDirectoryOverrides(from defaults: UserDefaults) -> [String: String] {
+        defaults.dictionaryRepresentation().reduce(into: [:]) { overrides, entry in
+            guard entry.key.hasPrefix(Self.legacyGitWorkingDirectoryOverrideKeyPrefix),
+                  let projectPath = entry.value as? String,
+                  let normalizedProjectPath = CodexThreadStartProjectBinding.normalizedProjectPath(projectPath) else {
+                return
+            }
+
+            let threadId = String(entry.key.dropFirst(Self.legacyGitWorkingDirectoryOverrideKeyPrefix.count))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !threadId.isEmpty else {
+                return
+            }
+
+            overrides[threadId] = normalizedProjectPath
+        }
     }
 }
 

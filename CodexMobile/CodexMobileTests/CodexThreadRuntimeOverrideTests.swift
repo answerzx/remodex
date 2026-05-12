@@ -89,6 +89,107 @@ final class CodexThreadRuntimeOverrideTests: XCTestCase {
         XCTAssertEqual(service.effectiveServiceTier(for: "thread-new"), .fast)
     }
 
+    func testContinuationThreadKeepsSourceProjectPath() async throws {
+        let service = makeService()
+        service.isConnected = true
+        service.availableModels = [makeModel()]
+        service.setSelectedModelId("gpt-5.4")
+        service.threads = [
+            CodexThread(
+                id: "thread-old",
+                title: "Original",
+                cwd: "/Users/me/RemoteX Test"
+            ),
+        ]
+
+        var capturedThreadStartParams: [JSONValue] = []
+        service.requestTransportOverride = { method, params in
+            XCTAssertEqual(method, "thread/start")
+            capturedThreadStartParams.append(params ?? .null)
+            return RPCMessage(
+                id: .string(UUID().uuidString),
+                result: .object([
+                    "thread": .object([
+                        "id": .string("thread-new"),
+                    ]),
+                ]),
+                includeJSONRPC: false
+            )
+        }
+
+        let thread = try await service.createContinuationThread(from: "thread-old")
+
+        XCTAssertEqual(
+            capturedThreadStartParams.first?.objectValue?["cwd"]?.stringValue,
+            "/Users/me/RemoteX Test"
+        )
+        XCTAssertEqual(thread.id, "thread-new")
+        XCTAssertEqual(thread.cwd, "/Users/me/RemoteX Test")
+    }
+
+    func testContinuationThreadKeepsSelectedGitWorkingDirectoryOverride() async throws {
+        let service = makeService()
+        service.isConnected = true
+        service.availableModels = [makeModel()]
+        service.setSelectedModelId("gpt-5.4")
+        service.threads = [
+            CodexThread(
+                id: "thread-old",
+                title: "Original"
+            ),
+        ]
+        service.setGitWorkingDirectoryOverride("/Users/me/Chosen Repo", for: "thread-old")
+
+        var capturedThreadStartParams: [JSONValue] = []
+        service.requestTransportOverride = { method, params in
+            XCTAssertEqual(method, "thread/start")
+            capturedThreadStartParams.append(params ?? .null)
+            return RPCMessage(
+                id: .string(UUID().uuidString),
+                result: .object([
+                    "thread": .object([
+                        "id": .string("thread-new"),
+                    ]),
+                ]),
+                includeJSONRPC: false
+            )
+        }
+
+        let thread = try await service.createContinuationThread(from: "thread-old")
+
+        XCTAssertEqual(
+            capturedThreadStartParams.first?.objectValue?["cwd"]?.stringValue,
+            "/Users/me/Chosen Repo"
+        )
+        XCTAssertEqual(thread.id, "thread-new")
+        XCTAssertEqual(thread.cwd, "/Users/me/Chosen Repo")
+    }
+
+    func testLegacyGitWorkingDirectoryOverrideMigratesIntoServiceStore() {
+        let suiteName = "CodexThreadRuntimeOverrideTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName) ?? .standard
+        defaults.removePersistentDomain(forName: suiteName)
+        defaults.set(
+            "/Users/me/Legacy Repo",
+            forKey: "\(CodexService.legacyGitWorkingDirectoryOverrideKeyPrefix)thread-old"
+        )
+
+        let service = CodexService(defaults: defaults)
+        Self.retainedServices.append(service)
+
+        XCTAssertEqual(
+            service.gitWorkingDirectoryOverride(for: "thread-old"),
+            "/Users/me/Legacy Repo"
+        )
+
+        let reloadedService = CodexService(defaults: defaults)
+        Self.retainedServices.append(reloadedService)
+        XCTAssertEqual(
+            reloadedService.gitWorkingDirectoryOverride(for: "thread-old"),
+            "/Users/me/Legacy Repo"
+        )
+    }
+
     func testStartThreadUsesProvidedRuntimeOverrideForServiceTier() async throws {
         let service = makeService()
         service.isConnected = true
