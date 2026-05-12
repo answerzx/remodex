@@ -58,6 +58,7 @@ const execFileAsync = promisify(execFile);
 const RELAY_WATCHDOG_PING_INTERVAL_MS = 10_000;
 // Keep the watchdog above the relay heartbeat cadence so quiet healthy sockets survive idle gaps.
 const RELAY_WATCHDOG_STALE_AFTER_MS = 70_000;
+const RELAY_REGISTRATION_REFRESH_INTERVAL_MS = 15_000;
 const BRIDGE_STATUS_HEARTBEAT_INTERVAL_MS = 5_000;
 const STALE_RELAY_STATUS_MESSAGE = "Relay heartbeat stalled; reconnect pending.";
 const RELAY_HISTORY_IMAGE_REFERENCE_URL = "remodex://history-image-elided";
@@ -146,6 +147,7 @@ function startBridge({
   let reconnectAttempt = 0;
   let reconnectTimer = null;
   let relayWatchdogTimer = null;
+  let relayRegistrationRefreshTimer = null;
   let statusHeartbeatTimer = null;
   let lastRelayActivityAt = 0;
   let lastPublishedBridgeStatus = null;
@@ -409,6 +411,28 @@ function startBridge({
     relayWatchdogTimer = null;
   }
 
+  function clearRelayRegistrationRefresh() {
+    if (!relayRegistrationRefreshTimer) {
+      return;
+    }
+
+    clearInterval(relayRegistrationRefreshTimer);
+    relayRegistrationRefreshTimer = null;
+  }
+
+  function startRelayRegistrationRefresh(trackedSocket) {
+    clearRelayRegistrationRefresh();
+    relayRegistrationRefreshTimer = setInterval(() => {
+      if (isShuttingDown || socket !== trackedSocket) {
+        clearRelayRegistrationRefresh();
+        return;
+      }
+
+      sendRelayRegistrationUpdate(deviceState);
+    }, RELAY_REGISTRATION_REFRESH_INTERVAL_MS);
+    relayRegistrationRefreshTimer.unref?.();
+  }
+
   function startRelayWatchdog(trackedSocket) {
     clearRelayWatchdog();
     markRelayActivity();
@@ -469,6 +493,7 @@ function startBridge({
         authStoreMonitor?.stop();
         clearReconnectTimer();
         clearRelayWatchdog();
+        clearRelayRegistrationRefresh();
         clearBridgeStatusHeartbeat();
       });
       return;
@@ -511,6 +536,7 @@ function startBridge({
       logConnectionStatus("connected");
       secureTransport.bindLiveSendWireMessage(sendRelayWireMessage);
       sendRelayRegistrationUpdate(deviceState);
+      startRelayRegistrationRefresh(nextSocket);
     });
 
     nextSocket.on("message", (data) => {
@@ -541,6 +567,7 @@ function startBridge({
     nextSocket.on("close", (code) => {
       if (socket === nextSocket) {
         clearRelayWatchdog();
+        clearRelayRegistrationRefresh();
       }
       logConnectionStatus("disconnected");
       if (socket === nextSocket) {
@@ -556,6 +583,7 @@ function startBridge({
     nextSocket.on("error", () => {
       if (socket === nextSocket) {
         clearRelayWatchdog();
+        clearRelayRegistrationRefresh();
       }
       logConnectionStatus("disconnected");
     });
@@ -602,6 +630,7 @@ function startBridge({
     bridgeWakeAssertion.stop();
     authStoreMonitor?.stop();
     clearReconnectTimer();
+    clearRelayRegistrationRefresh();
     stopContextUsageWatcher();
     rolloutLiveMirror?.stopAll();
     desktopIpcActionFollower?.stopAll();
@@ -619,6 +648,7 @@ function startBridge({
     authStoreMonitor?.stop();
     clearReconnectTimer();
     clearRelayWatchdog();
+    clearRelayRegistrationRefresh();
     clearBridgeStatusHeartbeat();
   }));
   process.on("SIGTERM", () => shutdown(codex, () => socket, () => {
@@ -627,6 +657,7 @@ function startBridge({
     authStoreMonitor?.stop();
     clearReconnectTimer();
     clearRelayWatchdog();
+    clearRelayRegistrationRefresh();
     clearBridgeStatusHeartbeat();
   }));
 
