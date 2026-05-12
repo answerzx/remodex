@@ -15,6 +15,7 @@ const {
   readBridgeConfig,
 } = require("./codex-desktop-refresher");
 const { createCodexTransport } = require("./codex-transport");
+const { createCodexAuthStoreMonitor } = require("./codex-auth-store-monitor");
 const { createThreadRolloutActivityWatcher } = require("./rollout-watch");
 const { printQR } = require("./qr");
 const { rememberActiveThread } = require("./session-state");
@@ -151,6 +152,9 @@ function startBridge({
   let lastConnectionStatus = null;
   let codexLaunchState = config.codexEndpoint ? "connected" : "starting";
   let codexHandshakeState = config.codexEndpoint ? "warm" : "cold";
+  let lastInitializeParams = null;
+  let pendingAuthStoreAccountUpdateNotification = false;
+  let codexReinitializePromise = null;
   const forwardedInitializeRequestIds = new Set();
   const bridgeManagedCodexRequestWaiters = new Map();
   const forwardedRequestMethodsById = new Map();
@@ -213,6 +217,11 @@ function startBridge({
     appPath: config.codexAppPath,
     logPrefix: "[remodex]",
   });
+  const authStoreMonitor = !config.codexEndpoint && typeof codex.restart === "function"
+    ? createCodexAuthStoreMonitor({
+      onChange: handleCodexAuthStoreChanged,
+    })
+    : null;
   const voiceHandler = createVoiceHandler({
     sendCodexRequest,
     logPrefix: "[remodex]",
@@ -247,11 +256,18 @@ function startBridge({
   codex.onStarted(() => {
     codexLaunchState = "connected";
     if (!lastPublishedBridgeStatus) {
+      if (pendingAuthStoreAccountUpdateNotification) {
+        handleCodexAuthRuntimeRestarted();
+      }
       return;
     }
 
     publishBridgeStatus(lastPublishedBridgeStatus);
+    if (pendingAuthStoreAccountUpdateNotification) {
+      handleCodexAuthRuntimeRestarted();
+    }
   });
+  authStoreMonitor?.start();
 
   function clearReconnectTimer() {
     if (!reconnectTimer) {
@@ -285,6 +301,98 @@ function startBridge({
 
     clearInterval(statusHeartbeatTimer);
     statusHeartbeatTimer = null;
+  }
+
+  // Desktop Codex account switches rewrite ~/.codex/auth.json, but the bridge-owned
+  // app-server process keeps its old account snapshot in memory until it restarts.
+  function handleCodexAuthStoreChanged() {
+    if (isShuttingDown || config.codexEndpoint || typeof codex.restart !== "function") {
+      return;
+    }
+
+    console.log("[remodex] Codex account store changed; restarting app-server.");
+    pendingAuthStoreAccountUpdateNotification = true;
+    codexLaunchState = "starting";
+    codexHandshakeState = "cold";
+    codexReinitializePromise = null;
+    forwardedInitializeRequestIds.clear();
+    clearPendingAuthLogin();
+    stopContextUsageWatcher();
+    rolloutLiveMirror?.stopAll();
+    desktopIpcActionFollower?.stopAll();
+    desktopRefresher.handleTransportReset();
+    failBridgeManagedCodexRequests(new Error("Codex account changed; app-server is restarting."));
+    publishBridgeStatus(lastPublishedBridgeStatus || {
+      state: "running",
+      connectionStatus: lastConnectionStatus || "connected",
+      pid: process.pid,
+      lastError: "",
+    });
+
+    if (!codex.restart()) {
+      pendingAuthStoreAccountUpdateNotification = false;
+      codexLaunchState = "error";
+      publishBridgeStatus({
+        state: "error",
+        connectionStatus: lastConnectionStatus || "disconnected",
+        pid: process.pid,
+        lastError: "Codex app-server restart is not supported by this transport.",
+      });
+    }
+  }
+
+  function handleCodexAuthRuntimeRestarted() {
+    if (!pendingAuthStoreAccountUpdateNotification) {
+      return;
+    }
+
+    pendingAuthStoreAccountUpdateNotification = false;
+    reinitializeCodexRuntimeAfterRestart()
+      .catch((error) => {
+        console.warn(`[remodex] Codex app-server reinitialize after account change failed: ${error.message}`);
+      })
+      .finally(() => {
+        sendApplicationResponse(JSON.stringify({
+          method: "account/updated",
+          params: {
+            reason: "codex_auth_store_changed",
+          },
+        }));
+      });
+  }
+
+  async function reinitializeCodexRuntimeAfterRestart() {
+    if (!lastInitializeParams) {
+      return;
+    }
+
+    if (codexReinitializePromise) {
+      return codexReinitializePromise;
+    }
+
+    codexReinitializePromise = (async () => {
+      try {
+        await sendCodexRequest("initialize", lastInitializeParams, {
+          skipRuntimeReadyWait: true,
+        });
+        codex.send(JSON.stringify({
+          method: "initialized",
+        }));
+        codexHandshakeState = "warm";
+      } catch (error) {
+        const message = typeof error?.message === "string" ? error.message.toLowerCase() : "";
+        if (message.includes("already initialized")) {
+          codexHandshakeState = "warm";
+          return;
+        }
+
+        throw error;
+      } finally {
+        codexReinitializePromise = null;
+      }
+    })();
+
+    return codexReinitializePromise;
   }
 
   // Tracks relay liveness locally so sleep/wake zombie sockets can be force-reconnected.
@@ -358,6 +466,7 @@ function startBridge({
       shutdown(codex, () => socket, () => {
         isShuttingDown = true;
         bridgeWakeAssertion.stop();
+        authStoreMonitor?.stop();
         clearReconnectTimer();
         clearRelayWatchdog();
         clearBridgeStatusHeartbeat();
@@ -491,6 +600,7 @@ function startBridge({
     });
     isShuttingDown = true;
     bridgeWakeAssertion.stop();
+    authStoreMonitor?.stop();
     clearReconnectTimer();
     stopContextUsageWatcher();
     rolloutLiveMirror?.stopAll();
@@ -506,6 +616,7 @@ function startBridge({
   process.on("SIGINT", () => shutdown(codex, () => socket, () => {
     isShuttingDown = true;
     bridgeWakeAssertion.stop();
+    authStoreMonitor?.stop();
     clearReconnectTimer();
     clearRelayWatchdog();
     clearBridgeStatusHeartbeat();
@@ -513,6 +624,7 @@ function startBridge({
   process.on("SIGTERM", () => shutdown(codex, () => socket, () => {
     isShuttingDown = true;
     bridgeWakeAssertion.stop();
+    authStoreMonitor?.stop();
     clearReconnectTimer();
     clearRelayWatchdog();
     clearBridgeStatusHeartbeat();
@@ -962,6 +1074,7 @@ function startBridge({
     }
 
     if (method === "initialize" && parsed.id != null) {
+      lastInitializeParams = parsed.params || {};
       const compatibilityError = bridgeManagedInitializeCompatibilityError(parsed.params || {});
       if (compatibilityError) {
         sendApplicationResponse(JSON.stringify({
@@ -1078,7 +1191,11 @@ function startBridge({
 
   // Runs bridge-private JSON-RPC calls against the local app-server so token-bearing responses
   // can power bridge features like transcription without ever reaching the phone.
-  function sendCodexRequest(method, params) {
+  function sendCodexRequest(method, params, options = {}) {
+    if (!options.skipRuntimeReadyWait && method !== "initialize" && codexReinitializePromise) {
+      return codexReinitializePromise.then(() => sendCodexRequest(method, params, options));
+    }
+
     const requestId = `bridge-managed-${randomBytes(12).toString("hex")}`;
     const payload = JSON.stringify({
       id: requestId,

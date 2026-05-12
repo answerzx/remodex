@@ -42,7 +42,7 @@ function createSpawnTransport({ env, appPath, spawnImpl = spawn }) {
       return activeLaunch?.description || launchPlans[0]?.description || "`codex app-server`";
     },
     send(message) {
-      if (!codex.stdin.writable || codex.stdin.destroyed || codex.stdin.writableEnded) {
+      if (!codex || !codex.stdin.writable || codex.stdin.destroyed || codex.stdin.writableEnded) {
         return;
       }
 
@@ -63,6 +63,26 @@ function createSpawnTransport({ env, appPath, spawnImpl = spawn }) {
     shutdown() {
       didRequestShutdown = true;
       shutdownCodexProcess(codex);
+    },
+    restart() {
+      if (didRequestShutdown) {
+        return false;
+      }
+
+      const previousCodex = codex;
+      codex = null;
+      launchIndex = -1;
+      activeLaunch = null;
+      stdoutBuffer = "";
+      stderrBuffer = "";
+      didReportError = false;
+
+      if (previousCodex) {
+        shutdownCodexProcess(previousCodex);
+      }
+
+      spawnNextLaunch();
+      return Boolean(activeLaunch);
     },
   };
 
@@ -233,6 +253,10 @@ function isLaunchableFile(candidatePath, { fsImpl = fs } = {}) {
 // Stops the exact process tree we launched on Windows so the shell wrapper
 // does not leave a child Codex process running in the background.
 function shutdownCodexProcess(codex) {
+  if (!codex) {
+    return;
+  }
+
   if (codex.killed || codex.exitCode !== null) {
     return;
   }
@@ -322,6 +346,9 @@ function createWebSocketTransport({ endpoint, WebSocketImpl = WebSocket }) {
       if (socket.readyState === openState || socket.readyState === connectingState) {
         socket.close();
       }
+    },
+    restart() {
+      return false;
     },
   };
 }

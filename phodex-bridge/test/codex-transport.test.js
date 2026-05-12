@@ -162,9 +162,62 @@ test("spawn transport retries with the bundled Codex binary after an ENOENT laun
   }
 });
 
+test("spawn transport restart kills the active child and starts a fresh app-server", () => {
+  const spawnCalls = [];
+  const children = [];
+  const spawnImpl = (command, args, options) => {
+    spawnCalls.push({ command, args, options });
+    const child = createFakeChild();
+    children.push(child);
+    return child;
+  };
+  const started = [];
+
+  const transport = createCodexTransport({
+    env: { PATH: "/usr/bin:/bin" },
+    spawnImpl,
+  });
+  transport.onStarted((info) => started.push(info));
+
+  assert.equal(spawnCalls.length, 1);
+  children[0].emit("spawn");
+  transport.send('{"id":"before"}');
+  assert.deepEqual(children[0].stdin.writes, ['{"id":"before"}\n']);
+
+  assert.equal(transport.restart(), true);
+  assert.equal(children[0].killed, true);
+  assert.equal(spawnCalls.length, 2);
+
+  children[0].emit("close", 1, null);
+  children[1].emit("spawn");
+  transport.send('{"id":"after"}');
+
+  assert.deepEqual(children[1].stdin.writes, ['{"id":"after"}\n']);
+  assert.deepEqual(started, [
+    {
+      mode: "spawn",
+      launchDescription: "`codex app-server`",
+    },
+    {
+      mode: "spawn",
+      launchDescription: "`codex app-server`",
+    },
+  ]);
+});
+
+test("endpoint transport reports that runtime restart is unavailable", () => {
+  const transport = createCodexTransport({
+    endpoint: "ws://127.0.0.1:4321/codex",
+    WebSocketImpl: FakeWebSocket,
+  });
+
+  assert.equal(transport.restart(), false);
+});
+
 function createFakeChild() {
   const handlers = new Map();
   const stdinHandlers = new Map();
+  const writes = [];
 
   return {
     killed: false,
@@ -174,10 +227,13 @@ function createFakeChild() {
       writable: true,
       destroyed: false,
       writableEnded: false,
+      writes,
       on(eventName, handler) {
         stdinHandlers.set(eventName, handler);
       },
-      write() {},
+      write(message) {
+        writes.push(message);
+      },
     },
     stdout: {
       on(eventName, handler) {
